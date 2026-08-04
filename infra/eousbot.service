@@ -5,23 +5,35 @@ Description=EousBot - self-modifying Discord bot
 After=network-online.target
 Wants=network-online.target
 
+# A crash loop from bad generated code must not become an infinite restart
+# loop. Five failures inside a minute stops the unit and leaves it stopped for
+# a human, so the failure is visible instead of silently churning.
+#
+# These MUST live in [Unit], not [Service]. systemd silently ignores them in
+# [Service] -- no warning, no error, the unit just restarts forever. Verified
+# the hard way: a bad token produced a restart counter of 17 with these in the
+# wrong section.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 [Service]
 Type=simple
 WorkingDirectory=%h/EousBot
 EnvironmentFile=%h/EousBot/.env
 ExecStart=/usr/bin/node %h/EousBot/dist/index.js
 
+# systemd user units do not source profile.d, so ~/.local/bin is absent from
+# the default PATH. The Agent SDK ships no binary of its own -- it resolves the
+# `claude` executable from PATH -- and the installer puts it in ~/.local/bin.
+# Without this line every /build fails at agent startup, and the error names
+# neither PATH nor claude.
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
 # The bot restarts *itself* as part of normal operation: it exits cleanly after
 # a successful self-deploy and relies on systemd to bring up the new build.
 # Restart=always is therefore load-bearing, not just crash insurance.
 Restart=always
 RestartSec=3
-
-# A crash loop from bad generated code must not become an infinite rebuild
-# loop. Five restarts inside a minute stops the unit and leaves it stopped for
-# a human -- the failure is then visible instead of silently churning.
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 StandardOutput=journal
 StandardError=journal

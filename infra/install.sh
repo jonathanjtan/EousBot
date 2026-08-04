@@ -40,6 +40,25 @@ command -v systemctl >/dev/null || die "systemctl not found"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [[ "$NODE_MAJOR" -ge 22 ]] || die "node $NODE_MAJOR is too old; need >= 22"
 
+# The Agent SDK ships no binary; it resolves `claude` from PATH. The unit adds
+# ~/.local/bin explicitly, so check the place the unit will actually look
+# rather than trusting this shell's PATH (which sources profile.d and lies).
+CLAUDE_BIN=""
+for candidate in "$HOME/.local/bin/claude" "/usr/local/bin/claude" "$(command -v claude 2>/dev/null || true)"; do
+  [[ -n "$candidate" && -x "$candidate" ]] && { CLAUDE_BIN="$candidate"; break; }
+done
+if [[ -z "$CLAUDE_BIN" ]]; then
+  warn "claude CLI not found. Builds will fail until it is installed:"
+  warn "  curl -fsSL https://claude.ai/install.sh | bash"
+else
+  log "Found claude at $CLAUDE_BIN"
+  # hostAuth mode (blank ANTHROPIC_API_KEY) needs a logged-in CLI on this box.
+  if [[ ! -f "$HOME/.claude/.credentials.json" ]]; then
+    warn "claude is installed but not logged in, and no ANTHROPIC_API_KEY is set."
+    warn "Run 'claude' once to authenticate, or set ANTHROPIC_API_KEY in .env."
+  fi
+fi
+
 # ------------------------------------------------------------------ code ---
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   log "Updating existing checkout at $INSTALL_DIR"
@@ -75,15 +94,25 @@ else
   log "Using existing .env (left untouched)"
 fi
 
-# Point the unit's REPO_PATH at wherever we actually installed.
-if ! grep -q "^REPO_PATH=$INSTALL_DIR$" "$INSTALL_DIR/.env" 2>/dev/null; then
-  if grep -q "^REPO_PATH=" "$INSTALL_DIR/.env"; then
-    sed -i "s|^REPO_PATH=.*|REPO_PATH=$INSTALL_DIR|" "$INSTALL_DIR/.env"
+# Rewrite the two settings that are necessarily machine-specific, so the same
+# .env can be copied straight from a dev laptop without hand-editing.
+#
+# SYSTEMD_UNIT in particular is blank on macOS (no systemd), and leaving it
+# blank here would silently degrade self-deploy: PRs merge and build, then
+# never restart, and the bot keeps running the old code while reporting
+# success.
+set_env_var() {
+  local key="$1" value="$2" file="$INSTALL_DIR/.env"
+  if grep -q "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
   else
-    echo "REPO_PATH=$INSTALL_DIR" >> "$INSTALL_DIR/.env"
+    printf '%s=%s\n' "$key" "$value" >> "$file"
   fi
-  log "Set REPO_PATH=$INSTALL_DIR"
-fi
+}
+
+set_env_var REPO_PATH "$INSTALL_DIR"
+set_env_var SYSTEMD_UNIT "$UNIT_NAME"
+log "Set REPO_PATH=$INSTALL_DIR and SYSTEMD_UNIT=$UNIT_NAME"
 
 # ---------------------------------------------------------------- systemd ---
 # Without linger, the user manager is torn down when the last SSH session ends

@@ -122,9 +122,17 @@ set_env_var() {
   fi
 }
 
-set_env_var REPO_PATH "$INSTALL_DIR"
+# REPO_PATH is derived from the code's own location at runtime, so an .env
+# copied from another machine must not keep a stale one. Strip rather than
+# rewrite: an absent value is always correct, a written one goes stale the
+# moment the file is copied somewhere else.
+if grep -q '^REPO_PATH=' "$INSTALL_DIR/.env"; then
+  sed -i 's|^REPO_PATH=|#REPO_PATH=|' "$INSTALL_DIR/.env"
+  log "Commented out REPO_PATH (now derived at runtime)"
+fi
+
 set_env_var SYSTEMD_UNIT "$UNIT_NAME"
-log "Set REPO_PATH=$INSTALL_DIR and SYSTEMD_UNIT=$UNIT_NAME"
+log "Set SYSTEMD_UNIT=$UNIT_NAME"
 
 # ---------------------------------------------------------------- systemd ---
 # Without linger, the user manager is torn down when the last SSH session ends

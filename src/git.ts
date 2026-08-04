@@ -33,11 +33,37 @@ export async function run(
     });
     return { ok: true, stdout, stderr, code: 0 };
   } catch (err) {
-    const e = err as { stdout?: string; stderr?: string; code?: number; message: string };
+    const e = err as {
+      stdout?: string;
+      stderr?: string;
+      code?: number | string;
+      message?: string;
+      signal?: string;
+    };
+
+    // `??` was wrong here: a spawn failure (ENOENT for a missing binary or a
+    // missing cwd) sets stderr to the empty *string*, which ?? happily keeps,
+    // discarding the only useful text. That turned a bad REPO_PATH into
+    // "git fetch failed: " with nothing after the colon.
+    const detail =
+      (e.stderr && e.stderr.trim()) ||
+      (e.stdout && e.stdout.trim()) ||
+      e.message ||
+      "command failed with no output";
+
+    // Spawn failures carry a string code (ENOENT, EACCES); exits carry a
+    // number. Keep the distinction visible instead of flattening both to 1.
+    const context =
+      typeof e.code === "string"
+        ? ` (${e.code}${e.code === "ENOENT" ? ` -- missing binary "${cmd}" or missing cwd "${opts.cwd}"` : ""})`
+        : e.signal
+          ? ` (killed by ${e.signal})`
+          : "";
+
     return {
       ok: false,
       stdout: e.stdout ?? "",
-      stderr: e.stderr ?? e.message,
+      stderr: `${detail}${context}`,
       code: typeof e.code === "number" ? e.code : 1,
     };
   }

@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 /**
@@ -59,10 +62,29 @@ const schema = z.object({
   //   remote - also starts the Remote Control bridge, so you can steer it
   AGENT_SESSION_VISIBILITY: z.enum(["off", "view", "remote"]).default("view"),
 
-  REPO_PATH: z.string().default(process.cwd()),
+  // Optional. Derived from this module's own location by default -- see
+  // defaultRepoPath below. Only set it if the checkout genuinely isn't the
+  // one this code was loaded from.
+  REPO_PATH: z.string().optional(),
   SYSTEMD_UNIT: z.string().default(""),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
+
+/**
+ * The checkout this code was loaded from.
+ *
+ * REPO_PATH used to be a required setting, which made it the one value in
+ * .env that could not be shared between machines: copying a laptop's .env to a
+ * server carried a path that does not exist there, and the first symptom was
+ * `git fetch` failing to spawn with an empty error twenty minutes later.
+ *
+ * Deriving it from `import.meta.url` cannot be wrong: dist/config.js and
+ * src/config.ts both sit one level below the repo root, so this resolves
+ * correctly whether running compiled or under tsx.
+ */
+function defaultRepoPath(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
 
 const parsed = schema.safeParse(process.env);
 
@@ -75,6 +97,24 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+
+const repoPath = env.REPO_PATH ?? defaultRepoPath();
+
+// Fail here rather than mid-build. A REPO_PATH that doesn't resolve to a git
+// checkout makes every git call fail to spawn, and a spawn failure carries no
+// stderr -- so the symptom is an empty error message from whichever command
+// happened to run first, pointing nowhere near the cause.
+if (!existsSync(resolve(repoPath, ".git"))) {
+  console.error(
+    `REPO_PATH does not look like a git checkout: ${repoPath}\n` +
+      (env.REPO_PATH
+        ? "It was set explicitly in the environment. Unset it to derive the path " +
+          "from this code's own location, which is correct on any machine."
+        : "This was derived from the running code's location, which is unexpected.") +
+      "\n",
+  );
+  process.exit(1);
+}
 
 export const config = {
   discord: {
@@ -110,7 +150,7 @@ export const config = {
     sessionVisibility: env.AGENT_SESSION_VISIBILITY,
   },
   runtime: {
-    repoPath: env.REPO_PATH,
+    repoPath,
     systemdUnit: env.SYSTEMD_UNIT,
     logLevel: env.LOG_LEVEL,
   },

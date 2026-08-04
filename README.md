@@ -112,8 +112,13 @@ cp /path/to/your/.env ~/EousBot/.env && chmod 600 ~/EousBot/.env
 ~/EousBot/infra/install.sh
 ```
 
-`install.sh` rewrites `REPO_PATH` and `SYSTEMD_UNIT` to match the machine, so
-the same `.env` works on a laptop and on the server without hand-editing.
+The same `.env` works on a laptop and on the server. `REPO_PATH` derives from
+the running code's own location, and `install.sh` sets `SYSTEMD_UNIT` for the
+machine.
+
+**Always re-run `install.sh` after copying `.env` over — never just restart.**
+A plain restart skips the `SYSTEMD_UNIT` rewrite, and the bot will then merge
+and build a self-deploy without ever restarting into it.
 
 The installer sets up a systemd **user** service. That choice is load-bearing:
 `systemctl --user restart` needs no sudo, so the bot can restart itself without

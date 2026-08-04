@@ -1,0 +1,36 @@
+[Unit]
+Description=EousBot - self-modifying Discord bot
+# A Discord bot only makes outbound connections, so network-online is enough;
+# there is nothing to bind and nothing to wait for inbound.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/EousBot
+EnvironmentFile=%h/EousBot/.env
+ExecStart=/usr/bin/node %h/EousBot/dist/index.js
+
+# The bot restarts *itself* as part of normal operation: it exits cleanly after
+# a successful self-deploy and relies on systemd to bring up the new build.
+# Restart=always is therefore load-bearing, not just crash insurance.
+Restart=always
+RestartSec=3
+
+# A crash loop from bad generated code must not become an infinite rebuild
+# loop. Five restarts inside a minute stops the unit and leaves it stopped for
+# a human -- the failure is then visible instead of silently churning.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eousbot
+
+# Modest hardening. Deliberately NOT ProtectHome or ReadOnlyPaths: the whole
+# point of this service is that it rewrites its own checkout under $HOME.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

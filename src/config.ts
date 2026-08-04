@@ -1,0 +1,101 @@
+import { z } from "zod";
+
+/**
+ * Environment is validated once, at boot, and never re-read.
+ *
+ * A bot that rewrites and redeploys itself must fail loudly on bad config
+ * rather than limp along: a missing GITHUB_TOKEN discovered halfway through a
+ * build leaves a worktree and a pushed branch with no PR to explain them.
+ */
+
+const csv = (raw: string | undefined): string[] =>
+  (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const schema = z.object({
+  DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
+  DISCORD_APP_ID: z.string().min(1, "DISCORD_APP_ID is required"),
+  DISCORD_GUILD_ID: z.string().min(1, "DISCORD_GUILD_ID is required"),
+  DISCORD_CHANNEL_ID: z.string().min(1, "DISCORD_CHANNEL_ID is required"),
+  DISCORD_ADMIN_IDS: z.string().default(""),
+
+  GITHUB_TOKEN: z.string().min(1, "GITHUB_TOKEN is required"),
+  GITHUB_OWNER: z.string().min(1),
+  GITHUB_REPO: z.string().min(1),
+
+  // Optional. When unset, the Agent SDK falls back to whatever credentials
+  // `claude` is logged in with on this machine. See config.agent.authMode.
+  ANTHROPIC_API_KEY: z.string().optional(),
+
+  AGENT_MODEL: z.string().default("claude-opus-5"),
+  AGENT_MAX_TURNS: z.coerce.number().int().positive().default(60),
+
+  REPO_PATH: z.string().default(process.cwd()),
+  SYSTEMD_UNIT: z.string().default(""),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
+const parsed = schema.safeParse(process.env);
+
+if (!parsed.success) {
+  const issues = parsed.error.issues
+    .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+    .join("\n");
+  console.error(`Invalid environment configuration:\n${issues}\n\nSee .env.example.`);
+  process.exit(1);
+}
+
+const env = parsed.data;
+
+export const config = {
+  discord: {
+    token: env.DISCORD_TOKEN,
+    appId: env.DISCORD_APP_ID,
+    guildId: env.DISCORD_GUILD_ID,
+    channelId: env.DISCORD_CHANNEL_ID,
+    /**
+     * The complete allowlist for privileged actions. Everything that can cause
+     * the bot to write or ship code is gated on membership here.
+     */
+    adminIds: new Set(csv(env.DISCORD_ADMIN_IDS)),
+  },
+  github: {
+    token: env.GITHUB_TOKEN,
+    owner: env.GITHUB_OWNER,
+    repo: env.GITHUB_REPO,
+  },
+  agent: {
+    /**
+     * `apiKey`  - metered Anthropic API spend, billed per token.
+     * `hostAuth` - inherit whatever `claude` is logged in as on this box.
+     *
+     * The Agent SDK resolves credentials the same way the CLI does, so the
+     * second mode needs no relay: simply leaving ANTHROPIC_API_KEY unset lets
+     * the SDK pick up the host's login. See the note in README.md on when
+     * that's appropriate -- it is a licensing question, not a technical one.
+     */
+    authMode: env.ANTHROPIC_API_KEY ? ("apiKey" as const) : ("hostAuth" as const),
+    apiKey: env.ANTHROPIC_API_KEY ?? null,
+    model: env.AGENT_MODEL,
+    maxTurns: env.AGENT_MAX_TURNS,
+  },
+  runtime: {
+    repoPath: env.REPO_PATH,
+    systemdUnit: env.SYSTEMD_UNIT,
+    logLevel: env.LOG_LEVEL,
+  },
+} as const;
+
+/** Privileged actions: /build, and clicking Approve or Reject on a PR. */
+export function isAdmin(userId: string): boolean {
+  return config.discord.adminIds.has(userId);
+}
+
+if (config.discord.adminIds.size === 0) {
+  console.warn(
+    "DISCORD_ADMIN_IDS is empty - /build and PR approval are disabled for everyone. " +
+      "Set it to your Discord user ID to enable self-modification.",
+  );
+}

@@ -1,0 +1,30 @@
+{
+  "name": "eousbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A Discord bot that takes feature requests, writes its own code, and redeploys itself behind a human approval gate.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "deploy-commands": "tsx src/deploy-commands.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "check": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.221",
+    "@octokit/rest": "^22.0.1",
+    "discord.js": "^14.27.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

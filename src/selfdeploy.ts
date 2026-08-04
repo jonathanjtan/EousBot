@@ -80,12 +80,17 @@ export async function approveAndDeploy(opts: {
   if (!reset.ok) return { kind: "failed", stage: "reset", detail: tail(reset.stderr) };
 
   onProgress("Installing dependencies");
-  const install = await run("npm", ["ci", "--no-audit", "--no-fund", "--omit=dev"], {
+  // Dev dependencies are REQUIRED here: the bot compiles itself on deploy, and
+  // typescript is a devDependency. `--omit=dev` succeeds, strips tsc, and then
+  // `npm run build` dies with "sh: 1: tsc: not found" one step later -- a
+  // failure that points at the build and is actually caused by the install.
+  const install = await run("npm", ["ci", "--no-audit", "--no-fund"], {
     cwd: config.runtime.repoPath,
     timeoutMs: 10 * 60_000,
   });
   if (!install.ok) {
-    // Dev deps are needed to compile; retry with a full install before failing.
+    // A lockfile the agent changed can defeat `npm ci`; fall back rather than
+    // stranding a merged commit unbuilt.
     const full = await run("npm", ["install", "--no-audit", "--no-fund"], {
       cwd: config.runtime.repoPath,
       timeoutMs: 10 * 60_000,

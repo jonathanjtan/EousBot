@@ -175,6 +175,19 @@ export async function buildFeature(
       costUsd: agentRun.costUsd,
       sessionId: agentRun.sessionId,
     };
+  } catch (err) {
+    // Every *handled* failure above clears the building label on its way out.
+    // An unhandled throw -- push auth, a network blip -- would otherwise leave
+    // the issue reading "building" forever, which /status reports as a live
+    // build that no longer exists.
+    await gh.setStatus(request.number, LABELS.failed).catch(() => undefined);
+    await gh
+      .comment(
+        request.number,
+        `**Build crashed.** No pull request was opened.\n\n\`\`\`\n${String(err).slice(0, 1500)}\n\`\`\``,
+      )
+      .catch(() => undefined);
+    throw err;
   } finally {
     // The branch lives on the remote now; the local worktree is disposable.
     await worktree.cleanup();

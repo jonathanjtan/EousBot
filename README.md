@@ -123,35 +123,39 @@ gateway, so it needs **zero inbound ports**. It fits the Tailscale-only,
 empty-NSG pattern already used by `kf-dev` and `kf-jp-proxy` with nothing to
 open and nothing to expose.
 
-If you're reusing `kf-dev`, two things need attention first:
+### Current setup: kf-dev, always-on
 
-**Auto-shutdown is set to 2300 UTC, not Pacific.** That's 3pm PST / 4pm PDT —
-the box powers off mid-afternoon. The karafriends `provision.sh` defines
-`SHUTDOWN_TZ` but never passes it to `az vm auto-shutdown`, so it defaulted to
-UTC. For an always-on bot, either disable the schedule or set it correctly:
+EousBot runs on `kf-dev` (`KARAFRIENDS-DEV`, westus2), sharing the box with the
+karafriends remote dev environment. Its auto-shutdown schedule has been
+**deleted** so the bot stays up.
+
+Two things to know about that:
+
+**The schedule was wrong before it was removed.** It read `2300 UTC` — 3pm PST /
+4pm PDT — not 23:00 local as intended. The karafriends `provision.sh` defines
+`SHUTDOWN_TZ` but never passes `--timezone` to `az vm auto-shutdown`, so Azure
+defaulted to UTC. Re-running that script will recreate the schedule with the
+same bug and start powering the bot off mid-afternoon. Either patch the script
+or re-delete after any reprovision:
 
 ```bash
-# Disable entirely
-az vm auto-shutdown -g KARAFRIENDS-DEV -n kf-dev --off
-
-# Or fix the timezone (note: --time is required alongside --timezone)
-az vm auto-shutdown -g KARAFRIENDS-DEV -n kf-dev \
-  --time 2300 --timezone "Pacific Standard Time"
+az vm auto-shutdown -g KARAFRIENDS-DEV -n kf-dev --off   # deletes the schedule
 ```
 
-**Size vs. credit.** `kf-dev` is a `Standard_D4as_v5` (~$0.19/hr). Left running
-24/7 that is roughly $140/month against a $150 Visual Studio Enterprise credit
-that also carries `kf-jp-proxy` and `lapis`'s disk. Options, roughly:
+**This is the expensive option, deliberately.** `kf-dev` is a
+`Standard_D4as_v5` at roughly $0.19/hr — about $140/month running 24/7, against
+a $150 Visual Studio Enterprise credit that also carries `kf-jp-proxy` and
+`lapis`'s disk. That is fine while actively building, and worth revisiting once
+the bot is stable. Two cheaper end states when it is:
 
 | Approach | Trade-off |
 |---|---|
-| Resize `kf-dev` down and drop auto-shutdown | One box, both roles. Slower builds when you're travelling. |
-| Keep `kf-dev` as-is, add a small burstable VM for the bot | Dev box stays fast; ~$25–30/mo more, still one NSG pattern. |
-| Leave `kf-dev` at D4as_v5 always-on | Simplest, but exceeds the monthly credit on its own. |
+| Resize `kf-dev` down, keep it always-on | One box, both roles. Slower builds when travelling. |
+| Move the bot to its own burstable VM | `kf-dev` returns to auto-shutdown; ~$25–30/mo for the bot. |
 
-Burstable (B-series) is a good fit for the bot specifically: it idles on a
-WebSocket and spikes only during `npm install` and `tsc`, which is exactly the
-workload B-series credits are designed for.
+Burstable (B-series) suits the bot specifically: it idles on a WebSocket and
+spikes only during `npm install` and `tsc`, which is what B-series credits are
+designed for.
 
 ## Adding commands
 

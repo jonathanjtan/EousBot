@@ -8,6 +8,27 @@ import { z } from "zod";
  * build leaves a worktree and a pushed branch with no PR to explain them.
  */
 
+/**
+ * Load .env when one is present.
+ *
+ * Under systemd the unit's EnvironmentFile= has already populated process.env,
+ * so this is a no-op that reloads identical values. Running locally there is
+ * nothing else doing it, and without this every entry point -- `npm run dev`,
+ * `deploy-commands`, `npm start` -- sees an empty environment and dies in
+ * validation below.
+ *
+ * process.loadEnvFile is built into Node >= 21.7, so this costs no dependency.
+ */
+try {
+  process.loadEnvFile();
+} catch (err) {
+  // ENOENT is the normal case in any environment that injects config directly
+  // (containers, CI). Anything else is a malformed file worth surfacing.
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+    console.error(`Could not read .env: ${String(err)}`);
+  }
+}
+
 const csv = (raw: string | undefined): string[] =>
   (raw ?? "")
     .split(",")

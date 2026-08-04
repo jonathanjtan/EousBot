@@ -12,6 +12,7 @@ import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
+import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
 import { takePendingAnnouncement } from "./state.js";
 
@@ -40,6 +41,14 @@ client.once(Events.ClientReady, async (ready) => {
 
   await ensureLabels().catch((err) =>
     log.warn("Could not ensure GitHub labels", { err: String(err) }),
+  );
+
+  // Closes the self-modification loop. A command the agent wrote is compiled
+  // and loaded by the restart above, but Discord serves its command list from
+  // a cached schema -- so without this, every new command needed a human to
+  // run a script before anyone could invoke it.
+  await syncGuildCommands(ready.rest).catch((err) =>
+    log.error("Could not sync slash commands", { err: String(err) }),
   );
 
   await announcePendingDeploy(sha);

@@ -163,9 +163,13 @@ Drop a module in `src/commands/` exporting a `Command`, then register it in
 directory globbing so that a command added by the agent shows up in the PR diff
 instead of appearing by filesystem side effect.
 
-Changing a command's **name, description, or options** requires re-running
-`npm run deploy-commands` — Discord caches the schema. Changing only its
-*behaviour* does not.
+The bot re-registers commands with Discord on every boot, but only when they
+actually differ from what Discord already has — so a new command written by
+the agent appears by itself after the self-deploy restart, and an unchanged
+set costs one read per boot rather than a write.
+
+`npm run deploy-commands` still exists as an escape hatch: it force-pushes the
+schema without waiting for a restart.
 
 ## Operating
 

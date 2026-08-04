@@ -108,9 +108,49 @@ export async function commitAll(worktreePath: string, message: string): Promise<
   if (!commit.ok) throw new Error(`git commit failed: ${commit.stderr}`);
 }
 
+/**
+ * Pushes the agent's branch, authenticating with GITHUB_TOKEN.
+ *
+ * The box clones anonymously (the repo is public), so nothing on disk can
+ * authenticate a *write*. Rather than persisting a credential, this supplies
+ * an inline credential helper for the single invocation and passes the token
+ * through the environment.
+ *
+ * The token deliberately does not go in the URL or in argv: both would put it
+ * in `ps` output and, for the URL form, in .git/config afterwards. git spawns
+ * the helper through a shell itself, so no shell is involved on our side.
+ */
 export async function push(worktreePath: string, branch: string): Promise<void> {
-  const res = await git(["push", "--force-with-lease", "origin", `${branch}:${branch}`], worktreePath);
-  if (!res.ok) throw new Error(`git push failed: ${res.stderr}`);
+  const helper =
+    '!f() { echo "username=x-access-token"; echo "password=$EOUS_GITHUB_TOKEN"; }; f';
+
+  const res = await run(
+    "git",
+    [
+      // Clear any inherited helper first, so a misconfigured global helper
+      // can't answer before ours does.
+      "-c",
+      "credential.helper=",
+      "-c",
+      `credential.helper=${helper}`,
+      "push",
+      "--force-with-lease",
+      "origin",
+      `${branch}:${branch}`,
+    ],
+    {
+      cwd: worktreePath,
+      env: { ...process.env, EOUS_GITHUB_TOKEN: config.github.token },
+    },
+  );
+
+  if (!res.ok) {
+    // Never surface stderr verbatim without scrubbing: git echoes the remote
+    // URL on failure, and a future switch to a token-bearing URL would leak it
+    // straight into a Discord message.
+    const scrubbed = res.stderr.replace(/https:\/\/[^@\s]+@/g, "https://***@");
+    throw new Error(`git push failed: ${scrubbed}`);
+  }
 }
 
 export async function currentSha(cwd = config.runtime.repoPath): Promise<string> {

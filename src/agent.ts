@@ -59,7 +59,31 @@ export interface AgentRunResult {
   summary: string;
   turns: number;
   costUsd: number | null;
+  /** Claude Code session ID, so a run can be found in the app afterwards. */
+  sessionId: string | null;
   error?: string;
+}
+
+/**
+ * Controls how much of a build session is reachable from the Claude app.
+ *
+ * Builds run unattended on a server, so by default there is no way to watch
+ * one except through Discord. `view` mirrors the transcript to claude.ai
+ * read-only; `remote` additionally opens the Remote Control bridge so you can
+ * actually steer a run mid-flight.
+ *
+ * Note that both send the session transcript -- which includes this
+ * repository's code -- to claude.ai. `off` keeps everything on the box.
+ */
+function visibilitySettings(): Record<string, unknown> {
+  switch (config.agent.sessionVisibility) {
+    case "view":
+      return { autoUploadSessions: true };
+    case "remote":
+      return { autoUploadSessions: true, remoteControlAtStartup: true };
+    case "off":
+      return {};
+  }
 }
 
 function buildPrompt(request: FeatureRequest): string {
@@ -89,8 +113,13 @@ export async function implementFeature(opts: {
   let summary = "";
   let turns = 0;
   let costUsd: number | null = null;
+  let sessionId: string | null = null;
 
-  log.info("Agent starting", { issue: request.number, cwd: worktreePath });
+  log.info("Agent starting", {
+    issue: request.number,
+    cwd: worktreePath,
+    visibility: config.agent.sessionVisibility,
+  });
 
   try {
     const q = query({
@@ -111,6 +140,7 @@ export async function implementFeature(opts: {
           preset: "claude_code",
           append: SYSTEM_PROMPT_APPENDIX,
         },
+        settings: visibilitySettings(),
         // In hostAuth mode we deliberately pass the environment through
         // untouched: an absent ANTHROPIC_API_KEY is what makes the SDK fall
         // back to the host's `claude` login.
@@ -121,6 +151,13 @@ export async function implementFeature(opts: {
     });
 
     for await (const message of q) {
+      // session_id rides on most message types rather than one dedicated
+      // event, so take it from whichever arrives first and keep it.
+      if (sessionId === null && "session_id" in message && typeof message.session_id === "string") {
+        sessionId = message.session_id;
+        log.info("Agent session", { issue: request.number, sessionId });
+      }
+
       if (message.type === "assistant") {
         turns += 1;
         for (const block of message.message.content) {
@@ -139,6 +176,7 @@ export async function implementFeature(opts: {
             summary,
             turns,
             costUsd,
+            sessionId,
             error: `Agent ended with: ${message.subtype}`,
           };
         }
@@ -149,7 +187,7 @@ export async function implementFeature(opts: {
     }
 
     log.info("Agent finished", { issue: request.number, turns, costUsd });
-    return { ok: true, summary: summary.trim(), turns, costUsd };
+    return { ok: true, summary: summary.trim(), turns, costUsd, sessionId };
   } catch (err) {
     log.error("Agent threw", { issue: request.number, err: String(err) });
     return {
@@ -157,6 +195,7 @@ export async function implementFeature(opts: {
       summary,
       turns,
       costUsd,
+      sessionId,
       error: err instanceof Error ? err.message : String(err),
     };
   }

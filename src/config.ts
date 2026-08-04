@@ -53,6 +53,12 @@ const schema = z.object({
   AGENT_MODEL: z.string().default("claude-opus-5"),
   AGENT_MAX_TURNS: z.coerce.number().int().positive().default(60),
 
+  // How much of each build session is reachable from the Claude app.
+  //   off    - nothing leaves the box
+  //   view   - mirrored to claude.ai read-only (autoUploadSessions)
+  //   remote - also starts the Remote Control bridge, so you can steer it
+  AGENT_SESSION_VISIBILITY: z.enum(["off", "view", "remote"]).default("view"),
+
   REPO_PATH: z.string().default(process.cwd()),
   SYSTEMD_UNIT: z.string().default(""),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -101,6 +107,7 @@ export const config = {
     apiKey: env.ANTHROPIC_API_KEY ?? null,
     model: env.AGENT_MODEL,
     maxTurns: env.AGENT_MAX_TURNS,
+    sessionVisibility: env.AGENT_SESSION_VISIBILITY,
   },
   runtime: {
     repoPath: env.REPO_PATH,

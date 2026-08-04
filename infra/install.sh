@@ -62,8 +62,20 @@ fi
 # ------------------------------------------------------------------ code ---
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   log "Updating existing checkout at $INSTALL_DIR"
+  BEFORE="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
   git -C "$INSTALL_DIR" fetch origin
   git -C "$INSTALL_DIR" reset --hard "origin/$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD)"
+  AFTER="$(git -C "$INSTALL_DIR" rev-parse HEAD)"
+
+  # This script lives in the tree it just replaced. bash reads scripts
+  # incrementally by byte offset, so continuing here would run a spliced
+  # mixture of the old and new file -- which is exactly how SYSTEMD_UNIT
+  # silently failed to get set on the first deploy. Re-exec the new version
+  # instead, once, guarded against looping.
+  if [[ "$BEFORE" != "$AFTER" && -z "${EOUS_INSTALL_REEXEC:-}" ]]; then
+    log "install.sh changed ($(printf %.8s "$BEFORE") -> $(printf %.8s "$AFTER")); re-executing"
+    EOUS_INSTALL_REEXEC=1 exec bash "$INSTALL_DIR/infra/$(basename "$0")" "$@"
+  fi
 else
   log "Cloning $REPO_URL into $INSTALL_DIR"
   git clone "$REPO_URL" "$INSTALL_DIR"

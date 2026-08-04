@@ -206,7 +206,13 @@ export async function defaultBranch(): Promise<string> {
   return data.default_branch;
 }
 
-/** Ensures the labels we rely on exist; GitHub 422s on setting unknown labels. */
+/**
+ * Ensures the labels we rely on exist; GitHub 422s on setting unknown labels.
+ *
+ * Lists first and creates only what's missing. Blindly creating and swallowing
+ * the 422 also works, but Octokit logs every rejected call, so each boot
+ * printed five API errors that looked like a problem and weren't.
+ */
 export async function ensureLabels(): Promise<void> {
   const colors: Record<string, string> = {
     [LABELS.request]: "0e8a16",
@@ -216,12 +222,26 @@ export async function ensureLabels(): Promise<void> {
     [LABELS.shipped]: "5319e7",
   };
 
-  for (const [name, color] of Object.entries(colors)) {
+  const existing = new Set<string>();
+  try {
+    const { data } = await octokit.issues.listLabelsForRepo({ ...repo, per_page: 100 });
+    for (const l of data) existing.add(l.name);
+  } catch (err) {
+    log.warn("Could not list labels; will attempt creates", { err: String(err) });
+  }
+
+  const missing = Object.entries(colors).filter(([name]) => !existing.has(name));
+  if (missing.length === 0) {
+    log.debug("All labels present");
+    return;
+  }
+
+  for (const [name, color] of missing) {
     try {
       await octokit.issues.createLabel({ ...repo, name, color });
-      log.debug("Created label", { name });
+      log.info("Created label", { name });
     } catch (err) {
-      // 422 means it already exists, which is the common case.
+      // Still tolerate 422: a concurrent boot may have created it first.
       if ((err as { status?: number }).status !== 422) throw err;
     }
   }

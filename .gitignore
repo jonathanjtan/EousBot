@@ -4,6 +4,10 @@ dist/
 .env.local
 *.log
 
+# Personal deployment context: host names, resource groups, costs. This repo is
+# public, so machine-specific detail stays out of README.md and lives here.
+CLAUDE.local.md
+
 # Runtime state (pending redeploy announcements, in-flight build records)
 state/
 

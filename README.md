@@ -63,7 +63,7 @@ causing the inference:
 
 - **Defensible:** `/build` stays admin-only, so only you can spend your own
   quota. That is your own automation with a Discord trigger — the same shape as
-  driving `claude` yourself over Tailscale, which is what `kf-dev` already does.
+  driving `claude` yourself on a remote box you own.
 - **Not defensible:** opening `/build` to the guild, or adding any path that
   lets someone else's input cause inference on your subscription. At that point
   it is a product served on your rate limits, and it needs its own API key.
@@ -108,54 +108,48 @@ warns at startup when it's unset.
 
 ```bash
 git clone https://github.com/jonathanjtan/EousBot.git ~/EousBot
+cp /path/to/your/.env ~/EousBot/.env && chmod 600 ~/EousBot/.env
 ~/EousBot/infra/install.sh
 ```
+
+`install.sh` rewrites `REPO_PATH` and `SYSTEMD_UNIT` to match the machine, so
+the same `.env` works on a laptop and on the server without hand-editing.
 
 The installer sets up a systemd **user** service. That choice is load-bearing:
 `systemctl --user restart` needs no sudo, so the bot can restart itself without
 being granted passwordless sudo — a far larger privilege than "restart
 yourself". It also enables linger, so the service survives you logging out.
 
-## Hosting on an existing box
+## Hosting
 
-EousBot is cheap to host: a Discord bot is an *outbound* WebSocket to Discord's
-gateway, so it needs **zero inbound ports**. It fits the Tailscale-only,
-empty-NSG pattern already used by `kf-dev` and `kf-jp-proxy` with nothing to
-open and nothing to expose.
+EousBot is cheap and easy to host. A Discord bot is an *outbound* WebSocket to
+Discord's gateway, so it needs **zero inbound ports** — nothing to expose, no
+firewall rule to open, no reverse proxy.
 
-### Current setup: kf-dev, always-on
+Requirements are modest:
 
-EousBot runs on `kf-dev` (`KARAFRIENDS-DEV`, westus2), sharing the box with the
-karafriends remote dev environment. Its auto-shutdown schedule has been
-**deleted** so the bot stays up.
-
-Two things to know about that:
-
-**The schedule was wrong before it was removed.** It read `2300 UTC` — 3pm PST /
-4pm PDT — not 23:00 local as intended. The karafriends `provision.sh` defines
-`SHUTDOWN_TZ` but never passes `--timezone` to `az vm auto-shutdown`, so Azure
-defaulted to UTC. Re-running that script will recreate the schedule with the
-same bug and start powering the bot off mid-afternoon. Either patch the script
-or re-delete after any reprovision:
-
-```bash
-az vm auto-shutdown -g KARAFRIENDS-DEV -n kf-dev --off   # deletes the schedule
-```
-
-**This is the expensive option, deliberately.** `kf-dev` is a
-`Standard_D4as_v5` at roughly $0.19/hr — about $140/month running 24/7, against
-a $150 Visual Studio Enterprise credit that also carries `kf-jp-proxy` and
-`lapis`'s disk. That is fine while actively building, and worth revisiting once
-the bot is stable. Two cheaper end states when it is:
-
-| Approach | Trade-off |
+| | |
 |---|---|
-| Resize `kf-dev` down, keep it always-on | One box, both roles. Slower builds when travelling. |
-| Move the bot to its own burstable VM | `kf-dev` returns to auto-shutdown; ~$25–30/mo for the bot. |
+| OS | Any Linux with systemd (user services + linger) |
+| Node | 22 or newer |
+| `claude` CLI | On `PATH` and logged in, unless you set `ANTHROPIC_API_KEY` |
+| Disk | Enough for a `node_modules` per concurrent build worktree |
+| Always-on | Builds and self-deploys only happen while the process is up |
 
-Burstable (B-series) suits the bot specifically: it idles on a WebSocket and
-spikes only during `npm install` and `tsc`, which is what B-series credits are
-designed for.
+A small burstable instance suits it well: the bot idles on a WebSocket and
+spikes only during `npm install` and `tsc`, which is exactly the workload
+burst credits are designed for. Sharing a box with other work is fine — it is
+not resource-hungry between builds.
+
+Two things that bite when hosting on a machine you already use for something
+else:
+
+- **Anything that powers the machine down stops the bot.** Scheduled shutdowns
+  on cloud dev boxes are the usual culprit, and they are easy to forget about
+  because they were configured for a different purpose.
+- **Reprovisioning scripts can undo the installer.** If the host is built from
+  a script that also manages its own systemd units or shutdown schedules,
+  re-running it may need `install.sh` run again afterwards.
 
 ## Adding commands
 

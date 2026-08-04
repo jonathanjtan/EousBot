@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Install EousBot onto an existing Linux box (e.g. kf-dev) as a systemd *user*
-# service. Idempotent: re-running reconciles rather than duplicating.
+# Install EousBot onto a Linux box as a systemd *user* service.
+# Idempotent: re-running reconciles rather than duplicating.
 #
 #   ./install.sh              install or update
 #   ./install.sh --no-start   set everything up but don't start the unit

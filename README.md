@@ -162,6 +162,37 @@ else:
   a script that also manages its own systemd units or shutdown schedules,
   re-running it may need `install.sh` run again afterwards.
 
+## Talking to the bot
+
+Mention it and say what you want:
+
+```
+@PaimonBot drop the polling watcher, make it a command instead
+@PaimonBot looks good, ship it
+@PaimonBot #11 use a simpler parser
+```
+
+It picks the PR from an explicit `#11`, from the message you replied to, or
+from the only open PR — and asks if there are several.
+
+**This is a shortcut to the gate, not a way around it.** Feedback runs a
+revision directly, because the output is another reviewable PR. Approving and
+rejecting still post the buttons: prose is ambiguous, and a misread "looks
+good, but change X" would deploy code nobody agreed to. The confirmation
+states which PR and which action were understood, so a wrong reading is
+visible before it costs anything.
+
+The parser (`src/intent.ts`) checks for change-request markers *before*
+approval words, so "lgtm, though can you rename the module" is feedback rather
+than a green light. Anything it can't classify becomes feedback too — it fails
+toward the reversible outcome by construction, and the tests cover that case
+specifically.
+
+**No privileged intent is needed.** Discord delivers full content for messages
+that mention an app even without `MessageContent`, so the bot reads what is
+addressed to it and nothing else. It still cannot see the server's ordinary
+conversation, and a stolen token still cannot scrape channel history.
+
 ## Iterating on a pull request
 
 **Request changes** on the approval embed — or `/revise <pr>` for any open PR —

@@ -17,6 +17,7 @@ import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
+import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
@@ -26,13 +27,17 @@ import { takePendingAnnouncement } from "./state.js";
  * EousBot: takes feature requests, writes its own code, and redeploys itself
  * behind a human approval gate.
  *
- * Only the Guilds intent is requested. The bot is driven entirely by slash
- * commands and buttons, so it never needs to read message content -- which
- * keeps it out of Discord's privileged-intent review and means a compromised
- * token can't be used to scrape the server's conversations.
+ * Guilds plus GuildMessages, and deliberately NOT MessageContent. Discord
+ * delivers full content for messages that mention the app even without that
+ * privileged intent, so the conversational handler works while the bot remains
+ * unable to read the server's ordinary conversation -- which keeps it out of
+ * privileged-intent review and means a stolen token still cannot scrape the
+ * channel history.
  */
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+});
 
 /** Serializes deploys the same way builds are serialized, for the same reason. */
 let deployInFlight = false;
@@ -344,6 +349,22 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         : interaction.reply({ content, flags: MessageFlags.Ephemeral })
       ).catch(() => undefined);
     }
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  // Ignore other bots (and ourselves) unconditionally: a bot that answers bots
+  // can be walked into a loop by anything that echoes mentions.
+  if (message.author.bot) return;
+  if (!client.user || !message.mentions.has(client.user)) return;
+  // @everyone / @here sweep in a mention match; only a direct ping counts.
+  if (message.mentions.everyone) return;
+
+  try {
+    await handleMention(message);
+  } catch (err) {
+    log.error("Mention handler threw", { err: String(err) });
+    await message.reply("Something went wrong handling that. Check my logs.").catch(() => undefined);
   }
 });
 

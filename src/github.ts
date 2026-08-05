@@ -172,6 +172,12 @@ export async function openPullRequest(opts: {
   return { number: data.number, url: data.html_url };
 }
 
+/** Open PRs, used to work out which one a bare mention is about. */
+export async function listOpenPullRequests(): Promise<{ number: number; title: string }[]> {
+  const { data } = await octokit.pulls.list({ ...repo, state: "open", per_page: 20 });
+  return data.map((p) => ({ number: p.number, title: p.title }));
+}
+
 export async function getPullRequest(number: number) {
   const { data } = await octokit.pulls.get({ ...repo, pull_number: number });
   return data;

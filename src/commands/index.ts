@@ -3,6 +3,7 @@ import { command as eightball } from "./eightball.js";
 import { command as ping } from "./ping.js";
 import { command as remindme } from "./remindme.js";
 import { command as request } from "./request.js";
+import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
 import { command as status } from "./status.js";
 import { command as usage } from "./usage.js";
@@ -20,6 +21,7 @@ export const commands: Command[] = [
   request,
   status,
   build,
+  revise,
   roll,
   eightball,
   usage,

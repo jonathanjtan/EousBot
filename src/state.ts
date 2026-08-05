@@ -25,8 +25,25 @@ export interface PendingAnnouncement {
   at: string;
 }
 
+/**
+ * Work the process was doing when it died.
+ *
+ * Written when an agent run starts and cleared when it finishes, so a claim
+ * still present at boot means the previous process was killed mid-run --
+ * almost always by a deploy restarting the service. Without this the Discord
+ * message just freezes at its last progress edit and nothing ever says why.
+ */
+export interface InterruptedWork {
+  kind: "build" | "revise";
+  target: number;
+  startedBy: string;
+  channelId: string | null;
+  at: string;
+}
+
 interface StateShape {
   pendingAnnouncement: PendingAnnouncement | null;
+  inFlight: InterruptedWork | null;
   /** Discord user IDs that asked to be pinged when a usage window resets. */
   usageReminders: string[];
   /** Last-seen reset timestamps, so a restart doesn't replay old rollovers. */
@@ -35,6 +52,7 @@ interface StateShape {
 
 const EMPTY: StateShape = {
   pendingAnnouncement: null,
+  inFlight: null,
   usageReminders: [],
   resetMemory: {},
 };
@@ -63,6 +81,18 @@ function write(next: StateShape): void {
 
 export function setPendingAnnouncement(a: PendingAnnouncement): void {
   write({ ...read(), pendingAnnouncement: a });
+}
+
+export function setInFlight(work: InterruptedWork | null): void {
+  write({ ...read(), inFlight: work });
+}
+
+/** Reads and clears in one step: an orphan is reported once, not every boot. */
+export function takeInterruptedWork(): InterruptedWork | null {
+  const current = read();
+  if (!current.inFlight) return null;
+  write({ ...current, inFlight: null });
+  return current.inFlight;
 }
 
 /** Reads and clears in one step, so a crash loop can't spam the channel. */

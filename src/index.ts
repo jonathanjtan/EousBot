@@ -6,31 +6,44 @@ import {
   type Interaction,
   type TextChannel,
 } from "discord.js";
-import { decodeCustomId } from "./approval.js";
+import {
+  FEEDBACK_INPUT_ID,
+  buildApprovalMessage,
+  buildRevisionModal,
+  decodeCustomId,
+} from "./approval.js";
 import { commandsByName } from "./commands/index.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
+import { acquire, describe, held, release } from "./inflight.js";
+import { handleMention } from "./mention.js";
+import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
-import { takePendingAnnouncement } from "./state.js";
+import { takeInterruptedWork, takePendingAnnouncement } from "./state.js";
 import { startUsageResetWatch } from "./usagewatch.js";
 
 /**
  * EousBot: takes feature requests, writes its own code, and redeploys itself
  * behind a human approval gate.
  *
- * Only the Guilds intent is requested. The bot is driven entirely by slash
- * commands and buttons, so it never needs to read message content -- which
- * keeps it out of Discord's privileged-intent review and means a compromised
- * token can't be used to scrape the server's conversations.
+ * Guilds plus GuildMessages, and deliberately NOT MessageContent. Discord
+ * delivers full content for messages that mention the app even without that
+ * privileged intent, so the conversational handler works while the bot remains
+ * unable to read the server's ordinary conversation -- which keeps it out of
+ * privileged-intent review and means a stolen token still cannot scrape the
+ * channel history.
  */
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+});
 
 /** Serializes deploys the same way builds are serialized, for the same reason. */
 let deployInFlight = false;
+
 
 client.once(Events.ClientReady, async (ready) => {
   const sha = await currentSha().catch(() => "unknown");
@@ -55,7 +68,45 @@ client.once(Events.ClientReady, async (ready) => {
   startUsageResetWatch(client);
 
   await announcePendingDeploy(sha);
+  await reportInterruptedWork();
 });
+
+/**
+ * Reports work that a restart killed.
+ *
+ * A claim still on disk means the previous process died mid-run -- almost
+ * always a deploy restarting the service. Without this the Discord message
+ * simply stops updating and looks indistinguishable from a slow build, which
+ * is exactly how a killed revision reads as a hung one.
+ */
+async function reportInterruptedWork(): Promise<void> {
+  const orphan = takeInterruptedWork();
+  if (!orphan) return;
+
+  log.warn("Previous process died mid-run", { orphan });
+
+  const what =
+    orphan.kind === "build"
+      ? `build of request #${orphan.target}`
+      : `revision of PR #${orphan.target}`;
+
+  const text = [
+    `**A ${what} was interrupted** by a restart and did not finish.`,
+    `Started by ${orphan.startedBy} at ${orphan.at}. Nothing was pushed, so nothing is half-done —`,
+    orphan.kind === "build"
+      ? `run \`/build ${orphan.target}\` again when you're ready.`
+      : `run \`/revise pr:${orphan.target}\` again when you're ready.`,
+  ].join("\n");
+
+  try {
+    const channel = await client.channels.fetch(orphan.channelId ?? config.discord.channelId);
+    if (channel?.isTextBased() && "send" in channel) {
+      await (channel as TextChannel).send(text);
+    }
+  } catch (err) {
+    log.warn("Could not report interrupted work", { err: String(err) });
+  }
+}
 
 /**
  * If the last thing this process's predecessor did was deploy and restart,
@@ -108,6 +159,123 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
+    if (interaction.isModalSubmit()) {
+      const target = decodeCustomId(interaction.customId);
+      if (!target || target.action !== "revise") return;
+
+      // Re-checked here rather than trusted from the button that opened the
+      // modal: the modal carries its own interaction and its own user.
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({
+          content: "Only the bot's admins can request changes.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const feedback = interaction.fields.getTextInputValue(FEEDBACK_INPUT_ID).trim();
+      if (!feedback) {
+        await interaction.reply({
+          content: "No feedback given, so nothing to revise.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const lock = acquire({
+        kind: "revise",
+        target: target.prNumber,
+        startedBy: interaction.user.username,
+        channelId: interaction.channelId,
+        at: new Date().toISOString(),
+      });
+      if (!lock.ok) {
+        await interaction.reply({
+          content: `${describe(lock.held)} is already running. Wait for it to finish.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      let latest = "Starting…";
+      let dirty = false;
+      const flush = setInterval(() => {
+        if (!dirty) return;
+        dirty = false;
+        interaction
+          .editReply(`**Revising PR #${target.prNumber}**\n\`${latest}\``)
+          .catch(() => undefined);
+      }, 4000);
+
+      try {
+        const outcome = await revisePullRequest(
+          {
+            prNumber: target.prNumber,
+            feedback,
+            requestedBy: interaction.user.username,
+          },
+          (stage, detail) => {
+            latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
+            dirty = true;
+          },
+        );
+        clearInterval(flush);
+
+        switch (outcome.kind) {
+          case "revised": {
+            await interaction.editReply(
+              [
+                `**PR #${outcome.prNumber} revised.**`,
+                `> ${feedback.split("\n")[0]?.slice(0, 200)}`,
+              ].join("\n"),
+            );
+            // A fresh approval prompt, so the revision gets the same gate the
+            // original did rather than inheriting its approval.
+            await interaction.followUp(
+              buildApprovalMessage({
+                prNumber: outcome.prNumber,
+                prUrl: outcome.prUrl,
+                issueNumber: target.issueNumber ?? 0,
+                title: `Revision of PR #${outcome.prNumber}`,
+                summary: outcome.summary,
+                diffStat: outcome.diffStat,
+                costUsd: outcome.costUsd,
+                requestedBy: interaction.user.id,
+              }),
+            );
+            break;
+          }
+          case "no-changes":
+            await interaction.editReply(
+              `**PR #${target.prNumber} unchanged** — the agent read the feedback but made no edit.\n\n${outcome.summary.slice(0, 1000)}`,
+            );
+            break;
+          case "failed":
+            await interaction.editReply(
+              [
+                `**Revision failed** at \`${outcome.stage}\`. PR #${target.prNumber} is untouched and still reviewable.`,
+                "```",
+                outcome.detail.slice(0, 1400),
+                "```",
+              ].join("\n"),
+            );
+            break;
+        }
+      } catch (err) {
+        clearInterval(flush);
+        log.error("Revision threw", { pr: target.prNumber, err: String(err) });
+        await interaction
+          .editReply(`Revision crashed:\n\`\`\`\n${String(err).slice(0, 1400)}\n\`\`\``)
+          .catch(() => undefined);
+      } finally {
+        clearInterval(flush);
+        release();
+      }
+      return;
+    }
+
     if (interaction.isButton()) {
       const target = decodeCustomId(interaction.customId);
       if (!target) return;
@@ -120,6 +288,23 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           content: "Only the bot's admins can approve or reject a deploy.",
           flags: MessageFlags.Ephemeral,
         });
+        return;
+      }
+
+      if (target.action === "revise") {
+        const busy = held();
+        if (busy) {
+          await interaction.reply({
+            content: `${describe(busy)} is already running. Wait for it to finish.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        // showModal must be the *first* response to the interaction -- it
+        // cannot follow a defer or a reply. The lock is taken on submit, not
+        // here: holding it across a modal the user might never submit would
+        // wedge every other entry point.
+        await interaction.showModal(buildRevisionModal(target.prNumber, target.issueNumber));
         return;
       }
 
@@ -213,6 +398,22 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         : interaction.reply({ content, flags: MessageFlags.Ephemeral })
       ).catch(() => undefined);
     }
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  // Ignore other bots (and ourselves) unconditionally: a bot that answers bots
+  // can be walked into a loop by anything that echoes mentions.
+  if (message.author.bot) return;
+  if (!client.user || !message.mentions.has(client.user)) return;
+  // @everyone / @here sweep in a mention match; only a direct ping counts.
+  if (message.mentions.everyone) return;
+
+  try {
+    await handleMention(message);
+  } catch (err) {
+    log.error("Mention handler threw", { err: String(err) });
+    await message.reply("Something went wrong handling that. Check my logs.").catch(() => undefined);
   }
 });
 

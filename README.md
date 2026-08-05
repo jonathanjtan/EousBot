@@ -11,10 +11,16 @@ itself — behind a human approval gate.
                      typecheck + tests must pass
                           │
                           ▼
-                     Pull request ──▶ Discord embed with Approve / Reject
-                                             │            admins only
-                                             ▼
-                              merge ▶ pull ▶ build ▶ restart
+                     Pull request ──▶ Discord embed      admins only
+                                          │
+                 ┌────────────────────────┼────────────────────┐
+                 ▼                        ▼                    ▼
+          Request changes             Approve               Reject
+                 │                        │                    │
+       agent revises the branch,   merge ▶ pull ▶         close the PR
+       re-gated, new embed  ──┐    build ▶ restart
+                           ▲  │
+                           └──┘   iterate until it's right
 ```
 
 ## Why the gate exists
@@ -155,6 +161,64 @@ else:
 - **Reprovisioning scripts can undo the installer.** If the host is built from
   a script that also manages its own systemd units or shutdown schedules,
   re-running it may need `install.sh` run again afterwards.
+
+## Talking to the bot
+
+Mention it and say what you want:
+
+```
+@PaimonBot drop the polling watcher, make it a command instead
+@PaimonBot looks good, ship it
+@PaimonBot #11 use a simpler parser
+```
+
+It picks the PR from an explicit `#11`, from the message you replied to, or
+from the only open PR — and asks if there are several.
+
+**This is a shortcut to the gate, not a way around it.** Feedback runs a
+revision directly, because the output is another reviewable PR. Approving and
+rejecting still post the buttons: prose is ambiguous, and a misread "looks
+good, but change X" would deploy code nobody agreed to. The confirmation
+states which PR and which action were understood, so a wrong reading is
+visible before it costs anything.
+
+The parser (`src/intent.ts`) checks for change-request markers *before*
+approval words, so "lgtm, though can you rename the module" is feedback rather
+than a green light. Anything it can't classify becomes feedback too — it fails
+toward the reversible outcome by construction, and the tests cover that case
+specifically.
+
+**No privileged intent is needed.** Discord delivers full content for messages
+that mention an app even without `MessageContent`, so the bot reads what is
+addressed to it and nothing else. It still cannot see the server's ordinary
+conversation, and a stolen token still cannot scrape channel history.
+
+## Iterating on a pull request
+
+**Request changes** on the approval embed — or `/revise <pr>` for any open PR —
+opens a modal for feedback, then puts the agent back on the same branch with it.
+
+The command exists because a button only lives on the message that carried it:
+embeds scroll away, channels get purged, and a PR opened before the button
+shipped never had one. `/revise` reaches any open PR regardless. The revision passes the same `tsc` and test gates as the
+original, pushes to the existing branch so the PR updates in place, and posts a
+fresh approval prompt. Repeat as often as you like.
+
+Two details that make this better than rejecting and rebuilding:
+
+- **The agent resumes its original session.** The session id is written into
+  every PR body, so it is recovered from GitHub rather than tracked locally.
+  Resuming means the agent still knows *why* it made its first choices instead
+  of inferring them from the diff. If the session is gone, it falls back to a
+  fresh one — the prompt carries the full context either way, so resume is an
+  improvement rather than a dependency.
+- **A failed revision leaves the PR alone.** The previously pushed commit
+  already passed the gates, so nothing is pushed unless the revision passes
+  too. You never lose a working version to a bad follow-up.
+
+Feedback is treated as a genuine change request but does not outrank the
+agent's ground rules: asked to weaken the approval gate, it declines that part,
+does the rest, and says so.
 
 ## Adding commands
 

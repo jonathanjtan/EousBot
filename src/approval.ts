@@ -3,6 +3,9 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from "discord.js";
 
 /**
@@ -15,7 +18,10 @@ import {
 
 const PREFIX = "eous";
 
-export type ApprovalAction = "approve" | "reject";
+export type ApprovalAction = "approve" | "reject" | "revise";
+
+/** Field id inside the revision modal. */
+export const FEEDBACK_INPUT_ID = "feedback";
 
 export interface ApprovalTarget {
   action: ApprovalAction;
@@ -30,7 +36,7 @@ export function encodeCustomId(t: ApprovalTarget): string {
 export function decodeCustomId(customId: string): ApprovalTarget | null {
   const [prefix, action, pr, issue] = customId.split(":");
   if (prefix !== PREFIX) return null;
-  if (action !== "approve" && action !== "reject") return null;
+  if (action !== "approve" && action !== "reject" && action !== "revise") return null;
 
   const prNumber = Number(pr);
   if (!Number.isInteger(prNumber)) return null;
@@ -89,6 +95,12 @@ export function buildApprovalMessage(opts: {
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(
+        encodeCustomId({ action: "revise", prNumber: opts.prNumber, issueNumber: opts.issueNumber }),
+      )
+      .setLabel("Request changes")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(
         encodeCustomId({ action: "reject", prNumber: opts.prNumber, issueNumber: opts.issueNumber }),
       )
       .setLabel("Reject")
@@ -96,4 +108,32 @@ export function buildApprovalMessage(opts: {
   );
 
   return { embeds: [embed], components: [row] };
+}
+
+/**
+ * The modal that collects revision feedback.
+ *
+ * A modal rather than a follow-up message because Discord will not let a
+ * button handler wait for a reply: the interaction has to be answered within
+ * three seconds. A modal *is* that answer, and it comes back as its own
+ * interaction with a fresh token, which is what buys the minutes a revision
+ * takes.
+ */
+export function buildRevisionModal(prNumber: number, issueNumber: number | null): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(encodeCustomId({ action: "revise", prNumber, issueNumber }))
+    .setTitle(`Request changes to PR #${prNumber}`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(FEEDBACK_INPUT_ID)
+          .setLabel("What should change?")
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder(
+            "e.g. don't poll on a timer, make it a slash command that reports on demand",
+          )
+          .setRequired(true)
+          .setMaxLength(2000),
+      ),
+    );
 }

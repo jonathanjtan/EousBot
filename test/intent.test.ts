@@ -43,6 +43,39 @@ test("approval words inside a change request do NOT approve", () => {
   }
 });
 
+test("naming an issue asks for a build", () => {
+  const cases: [string, number][] = [
+    ["work on #16", 16],
+    ["work on issue 16", 16],
+    ["build #7", 7],
+    ["please build #7", 7],
+    ["can you implement issue #5", 5],
+    ["go ahead and build 12", 12],
+    ["hey, tackle #3 next", 3],
+    ["implement the feature request 9", 9],
+    ["fix #42", 42],
+  ];
+  for (const [msg, issueNumber] of cases) {
+    const intent = parseMentionIntent(`${MENTION} ${msg}`);
+    assert.equal(intent.kind, "build", `should be build: ${msg}`);
+    assert.equal(intent.kind === "build" ? intent.issueNumber : 0, issueNumber, msg);
+  }
+});
+
+test("a build word inside feedback does not start a build", () => {
+  // The number is there, but the message is about an open PR, not an issue.
+  const cases = [
+    "looks good but build the config from env, see #11",
+    "start over with #11",
+    "use a worktree instead of #11's approach",
+    "drop the polling in #11",
+    "implement it without the timer",
+  ];
+  for (const msg of cases) {
+    assert.notEqual(parseMentionIntent(`${MENTION} ${msg}`).kind, "build", msg);
+  }
+});
+
 test("rejection reads as reject", () => {
   for (const msg of ["reject", "scrap this", "discard", "start over"]) {
     assert.equal(parseMentionIntent(`${MENTION} ${msg}`).kind, "reject", msg);

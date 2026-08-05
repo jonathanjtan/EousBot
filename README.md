@@ -182,16 +182,21 @@ else:
 Mention it and say what you want:
 
 ```
+@PaimonBot work on #16
 @PaimonBot drop the polling watcher, make it a command instead
 @PaimonBot looks good, ship it
 @PaimonBot #11 use a simpler parser
 ```
 
-It picks the PR from an explicit `#11`, from the message you replied to, or
-from the only open PR — and asks if there are several.
+Naming an open request after a build word — `work on #16`, `build issue 12`,
+`implement #5` — runs the same pipeline `/build` does, at the configured model
+and effort. Use `/build` when you want to override those.
 
-**This is a shortcut to the gate, not a way around it.** Feedback runs a
-revision directly, because the output is another reviewable PR. Approving and
+For feedback it picks the PR from an explicit `#11`, from the message you
+replied to, or from the only open PR — and asks if there are several.
+
+**This is a shortcut to the gate, not a way around it.** A build or a revision
+runs directly, because the output is a reviewable PR. Approving and
 rejecting still post the buttons: prose is ambiguous, and a misread "looks
 good, but change X" would deploy code nobody agreed to. The confirmation
 states which PR and which action were understood, so a wrong reading is
@@ -199,7 +204,10 @@ visible before it costs anything.
 
 The parser (`src/intent.ts`) checks for change-request markers *before*
 approval words, so "lgtm, though can you rename the module" is feedback rather
-than a green light. Anything it can't classify becomes feedback too — it fails
+than a green light. The build pattern is anchored at the start of the message
+and has to name a number right after the verb, so "looks good but build the
+config from env, see #11" stays feedback about #11 rather than becoming a build
+of it. Anything it can't classify becomes feedback too — it fails
 toward the reversible outcome by construction, and the tests cover that case
 specifically.
 

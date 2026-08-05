@@ -14,6 +14,7 @@ export type MentionIntent =
   | { kind: "approve" }
   | { kind: "reject"; reason: string }
   | { kind: "revise"; feedback: string }
+  | { kind: "build"; issueNumber: number }
   | { kind: "help" };
 
 /**
@@ -32,6 +33,18 @@ const REJECT_PATTERNS =
 
 const HELP_PATTERNS = /^(help|\?+|what can you do|commands)$/i;
 
+/**
+ * "work on #16" — asking for a build of an open feature request.
+ *
+ * Anchored at the start and required to name a number right after the verb, so
+ * feedback that happens to contain a build word ("looks good but build the
+ * config from env, see #11") stays feedback. Failing toward `revise` here only
+ * misreads which prose was meant for whom; failing the other way spends a
+ * build on the wrong thing.
+ */
+const BUILD_PATTERNS =
+  /^(?:(?:hey|ok|okay|yo|please|can you|could you|would you|go ahead and)[,\s]+)*(?:build|implement|work on|start(?: on)?|tackle|take on|pick up|fix|handle)\s+(?:the\s+)?(?:feature\s+)?(?:request|issue)?\s*#?(\d+)\b/i;
+
 /** Strips leading/trailing mentions so the parser sees only the instruction. */
 export function stripMentions(content: string): string {
   return content
@@ -45,7 +58,13 @@ export function parseMentionIntent(rawContent: string): MentionIntent {
 
   if (!text || HELP_PATTERNS.test(text)) return { kind: "help" };
 
-  // Checked first, on purpose: an approval word inside a change request must
+  // Ahead of the revision check, since "please build #7" carries a revision
+  // marker but names an issue outright. The pattern's anchoring is what keeps
+  // that from swallowing ordinary feedback.
+  const build = text.match(BUILD_PATTERNS);
+  if (build?.[1]) return { kind: "build", issueNumber: Number(build[1]) };
+
+  // Checked before approval, on purpose: an approval word inside a change request must
   // not win. Failing toward `revise` costs a build; failing toward `approve`
   // costs a deploy of something nobody agreed to.
   if (REVISION_MARKERS.test(text)) return { kind: "revise", feedback: text };

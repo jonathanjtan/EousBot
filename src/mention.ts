@@ -5,13 +5,13 @@ import * as gh from "./github.js";
 import { acquire, describe, release } from "./inflight.js";
 import { parseMentionIntent } from "./intent.js";
 import { log } from "./log.js";
-import { revisePullRequest } from "./pipeline.js";
+import { buildFeature, revisePullRequest } from "./pipeline.js";
 
 /**
  * Conversational entry point: talking to the bot instead of driving it.
  *
- * This is a shortcut to the existing gate, never a way around it. A revision
- * runs directly, because it only produces another reviewable PR. Approving and
+ * This is a shortcut to the existing gate, never a way around it. Builds and
+ * revisions run directly, because they only produce a reviewable PR. Approving and
  * rejecting still go through the buttons -- prose is ambiguous, and a
  * misreading there deploys code nobody agreed to. The confirmation shows what
  * was understood, so a wrong reading is visible before it costs anything.
@@ -77,6 +77,13 @@ export async function handleMention(message: Message): Promise<void> {
     return;
   }
 
+  // A build produces a pull request and nothing else, so it runs directly for
+  // the same reason a revision does.
+  if (intent.kind === "build") {
+    await runBuild(message, intent.issueNumber);
+    return;
+  }
+
   const text = intent.kind === "revise" ? intent.feedback : intent.kind === "reject" ? intent.reason : "";
   const target = await resolveTargetPr(message, text || message.content);
 
@@ -116,6 +123,91 @@ export async function handleMention(message: Message): Promise<void> {
   // Revisions run directly: the output is another reviewable PR, so the
   // existing gate still stands between this and anything shipping.
   await runRevision(message, target.number, intent.feedback);
+}
+
+async function runBuild(message: Message, issueNumber: number): Promise<void> {
+  const request = await gh.getFeatureRequest(issueNumber);
+  if (!request) {
+    await message.reply(
+      `No feature request numbered **#${issueNumber}** — that number might be a PR. Check \`/status\`.`,
+    );
+    return;
+  }
+
+  const lock = acquire({
+    kind: "build",
+    target: issueNumber,
+    startedBy: message.author.username,
+    channelId: message.channelId,
+    at: new Date().toISOString(),
+  });
+  if (!lock.ok) {
+    await message.reply(`${describe(lock.held)} is already running. Give me a minute.`);
+    return;
+  }
+
+  const header = `**Building #${issueNumber}** — ${request.title}`;
+  const status = await message.reply(`${header}\n\`Starting…\``);
+
+  let latest = "Starting…";
+  let dirty = false;
+  const flush = setInterval(() => {
+    if (!dirty) return;
+    dirty = false;
+    status.edit(`${header}\n\`${latest}\``).catch(() => undefined);
+  }, 4000);
+
+  try {
+    // No model or effort override: prose isn't a good place to pick one, and
+    // `/build` is still there for a request that warrants more.
+    const outcome = await buildFeature(request, (stage, detail) => {
+      latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
+      dirty = true;
+    });
+    clearInterval(flush);
+
+    switch (outcome.kind) {
+      case "opened":
+        await status.edit(`**#${issueNumber}** built successfully — review below.`);
+        await status.reply(
+          buildApprovalMessage({
+            prNumber: outcome.prNumber,
+            prUrl: outcome.prUrl,
+            issueNumber,
+            title: request.title,
+            summary: outcome.summary,
+            diffStat: outcome.diffStat,
+            costUsd: outcome.costUsd,
+            requestedBy: request.requestedBy,
+          }),
+        );
+        break;
+      case "no-changes":
+        await status.edit(
+          `**#${issueNumber}**: the agent finished but changed nothing. Its notes are on the issue.`,
+        );
+        break;
+      case "failed":
+        await status.edit(
+          [
+            `**#${issueNumber}** failed at \`${outcome.stage}\`. No pull request was opened.`,
+            "```",
+            outcome.detail.slice(0, 1200),
+            "```",
+          ].join("\n"),
+        );
+        break;
+    }
+  } catch (err) {
+    clearInterval(flush);
+    log.error("Mention build threw", { issue: issueNumber, err: String(err) });
+    await status
+      .edit(`That crashed:\n\`\`\`\n${String(err).slice(0, 1200)}\n\`\`\``)
+      .catch(() => undefined);
+  } finally {
+    clearInterval(flush);
+    release();
+  }
 }
 
 async function runRevision(message: Message, prNumber: number, feedback: string): Promise<void> {
@@ -209,6 +301,7 @@ function helpEmbed(): EmbedBuilder {
       [
         "Mention me with what you want and I'll work it out:",
         "",
+        "• **“work on #16”** / **“build issue 12”** — I write the code and open a PR",
         "• **“do X instead”** / **“drop the polling, use a command”** — I revise the PR",
         "• **“looks good, ship it”** — I'll ask you to confirm, then deploy",
         "• **“reject that”** — I'll ask you to confirm, then close it",

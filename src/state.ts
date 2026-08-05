@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import type { ResetMemory } from "./reminders.js";
 
 /**
  * A tiny JSON-file store for the handful of facts that must survive a restart.
@@ -26,9 +27,17 @@ export interface PendingAnnouncement {
 
 interface StateShape {
   pendingAnnouncement: PendingAnnouncement | null;
+  /** Discord user IDs that asked to be pinged when a usage window resets. */
+  usageReminders: string[];
+  /** Last-seen reset timestamps, so a restart doesn't replay old rollovers. */
+  resetMemory: ResetMemory;
 }
 
-const EMPTY: StateShape = { pendingAnnouncement: null };
+const EMPTY: StateShape = {
+  pendingAnnouncement: null,
+  usageReminders: [],
+  resetMemory: {},
+};
 
 const statePath = join(config.runtime.repoPath, "state", "eousbot.json");
 
@@ -62,4 +71,27 @@ export function takePendingAnnouncement(): PendingAnnouncement | null {
   if (!current.pendingAnnouncement) return null;
   write({ ...current, pendingAnnouncement: null });
   return current.pendingAnnouncement;
+}
+
+export function usageReminderSubscribers(): string[] {
+  return read().usageReminders;
+}
+
+/** Adds or removes the user, and reports whether they're subscribed afterwards. */
+export function toggleUsageReminder(userId: string): boolean {
+  const current = read();
+  const subscribed = current.usageReminders.includes(userId);
+  const usageReminders = subscribed
+    ? current.usageReminders.filter((id) => id !== userId)
+    : [...current.usageReminders, userId];
+  write({ ...current, usageReminders });
+  return !subscribed;
+}
+
+export function readResetMemory(): ResetMemory {
+  return read().resetMemory;
+}
+
+export function saveResetMemory(resetMemory: ResetMemory): void {
+  write({ ...read(), resetMemory });
 }

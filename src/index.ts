@@ -23,6 +23,7 @@ import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
 import { takeInterruptedWork, takePendingAnnouncement } from "./state.js";
+import { startUsageResetWatch } from "./usagewatch.js";
 
 /**
  * EousBot: takes feature requests, writes its own code, and redeploys itself
@@ -63,6 +64,8 @@ client.once(Events.ClientReady, async (ready) => {
   await syncGuildCommands(ready.rest).catch((err) =>
     log.error("Could not sync slash commands", { err: String(err) }),
   );
+
+  startUsageResetWatch(client);
 
   await announcePendingDeploy(sha);
   await reportInterruptedWork();

@@ -1,6 +1,7 @@
 import { command as build } from "./build.js";
 import { command as eightball } from "./eightball.js";
 import { command as ping } from "./ping.js";
+import { command as remindme } from "./remindme.js";
 import { command as request } from "./request.js";
 import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
@@ -24,6 +25,7 @@ export const commands: Command[] = [
   roll,
   eightball,
   usage,
+  remindme,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

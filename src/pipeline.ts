@@ -1,4 +1,4 @@
-import { implementFeature, reviseFeature } from "./agent.js";
+import { fetchUsage, implementFeature, reviseFeature } from "./agent.js";
 import { describeAgentOptions } from "./agentopts.js";
 import * as gh from "./github.js";
 import { LABELS } from "./github.js";
@@ -14,6 +14,7 @@ import {
 } from "./git.js";
 import { branchNameFor, sessionIdFromPrBody } from "./naming.js";
 import { log } from "./log.js";
+import { usageReminderSubscribers } from "./state.js";
 import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
 
@@ -74,6 +75,20 @@ function tail(text: string, lines = 40): string {
   return text.trim().split("\n").slice(-lines).join("\n");
 }
 
+/**
+ * Running the agent is by far the biggest thing this bot does to its usage
+ * limits, and fetchUsage memoizes the reset times it reads. Reading them once
+ * afterwards is what keeps /remindme's schedule current without anything
+ * polling for it; nobody is waiting on the answer, so it runs alongside the
+ * rest of the build.
+ */
+function refreshUsageAfterAgentRun(): void {
+  if (usageReminderSubscribers().length === 0) return;
+  void fetchUsage().catch((err) =>
+    log.warn("Could not refresh usage after an agent run", { err: String(err) }),
+  );
+}
+
 export async function buildFeature(
   request: FeatureRequest,
   onProgress: BuildProgress = () => {},
@@ -114,6 +129,8 @@ export async function buildFeature(
       agentOptions,
       onProgress: (note) => onProgress("Agent progress", note),
     });
+
+    refreshUsageAfterAgentRun();
 
     if (!agentRun.ok) {
       await gh.setStatus(request.number, LABELS.failed);
@@ -307,6 +324,8 @@ export async function revisePullRequest(
       agentOptions,
       onProgress: (note) => onProgress("Agent progress", note),
     });
+
+    refreshUsageAfterAgentRun();
 
     if (!agentRun.ok) {
       await gh.setStatus(request.number, LABELS.needsReview);

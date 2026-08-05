@@ -1,6 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import { buildRevisionModal } from "../approval.js";
 import { getPullRequest } from "../github.js";
+import { cachedRevisionRefusal } from "../usagegate.js";
 import type { Command } from "./types.js";
 
 /**
@@ -14,12 +15,14 @@ import type { Command } from "./types.js";
  * scrolls away, and a channel purge should not be able to strand a PR.
  *
  * This is the same modal and the same pipeline -- only the entry point differs.
+ *
+ * Open to everyone, on the same usage gate the button carries: see
+ * src/usagegate.ts.
  */
 export const command: Command = {
-  adminOnly: true,
   data: new SlashCommandBuilder()
     .setName("revise")
-    .setDescription("Ask the agent to change an open pull request (admin only)")
+    .setDescription("Ask the agent to change an open pull request")
     .addIntegerOption((o) =>
       o.setName("pr").setDescription("The pull request number").setRequired(true),
     ),
@@ -45,6 +48,14 @@ export const command: Command = {
         content: `PR **#${prNumber}** is ${pr.state}, so there is nothing to revise.`,
         flags: MessageFlags.Ephemeral,
       });
+      return;
+    }
+
+    // Same courtesy for the usage gate: refuse now if the last usage reading
+    // already says there's no room. The binding check runs on submit.
+    const refusal = cachedRevisionRefusal(interaction.user.id);
+    if (refusal) {
+      await interaction.reply({ content: refusal, flags: MessageFlags.Ephemeral });
       return;
     }
 

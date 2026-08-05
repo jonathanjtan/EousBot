@@ -64,7 +64,8 @@ async function resolveTargetPr(
 export async function handleMention(message: Message): Promise<void> {
   if (!isAdmin(message.author.id)) {
     await message.reply(
-      "Only the bot's admins can direct me. You can still file a request with `/request`.",
+      "Only the bot's admins can direct me. You can still file a request with `/request`, " +
+        "or ask for changes to an open PR with `/revise`.",
     );
     return;
   }

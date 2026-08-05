@@ -17,11 +17,12 @@ import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
+import { acquire, describe, held, release } from "./inflight.js";
 import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
-import { takePendingAnnouncement } from "./state.js";
+import { takeInterruptedWork, takePendingAnnouncement } from "./state.js";
 
 /**
  * EousBot: takes feature requests, writes its own code, and redeploys itself
@@ -42,8 +43,6 @@ const client = new Client({
 /** Serializes deploys the same way builds are serialized, for the same reason. */
 let deployInFlight = false;
 
-/** Revisions share the worktree machinery with builds, so they serialize too. */
-let reviseInFlight = false;
 
 client.once(Events.ClientReady, async (ready) => {
   const sha = await currentSha().catch(() => "unknown");
@@ -66,7 +65,45 @@ client.once(Events.ClientReady, async (ready) => {
   );
 
   await announcePendingDeploy(sha);
+  await reportInterruptedWork();
 });
+
+/**
+ * Reports work that a restart killed.
+ *
+ * A claim still on disk means the previous process died mid-run -- almost
+ * always a deploy restarting the service. Without this the Discord message
+ * simply stops updating and looks indistinguishable from a slow build, which
+ * is exactly how a killed revision reads as a hung one.
+ */
+async function reportInterruptedWork(): Promise<void> {
+  const orphan = takeInterruptedWork();
+  if (!orphan) return;
+
+  log.warn("Previous process died mid-run", { orphan });
+
+  const what =
+    orphan.kind === "build"
+      ? `build of request #${orphan.target}`
+      : `revision of PR #${orphan.target}`;
+
+  const text = [
+    `**A ${what} was interrupted** by a restart and did not finish.`,
+    `Started by ${orphan.startedBy} at ${orphan.at}. Nothing was pushed, so nothing is half-done —`,
+    orphan.kind === "build"
+      ? `run \`/build ${orphan.target}\` again when you're ready.`
+      : `run \`/revise pr:${orphan.target}\` again when you're ready.`,
+  ].join("\n");
+
+  try {
+    const channel = await client.channels.fetch(orphan.channelId ?? config.discord.channelId);
+    if (channel?.isTextBased() && "send" in channel) {
+      await (channel as TextChannel).send(text);
+    }
+  } catch (err) {
+    log.warn("Could not report interrupted work", { err: String(err) });
+  }
+}
 
 /**
  * If the last thing this process's predecessor did was deploy and restart,
@@ -142,15 +179,21 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         return;
       }
 
-      if (reviseInFlight) {
+      const lock = acquire({
+        kind: "revise",
+        target: target.prNumber,
+        startedBy: interaction.user.username,
+        channelId: interaction.channelId,
+        at: new Date().toISOString(),
+      });
+      if (!lock.ok) {
         await interaction.reply({
-          content: "A revision is already running. Wait for it to finish.",
+          content: `${describe(lock.held)} is already running. Wait for it to finish.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      reviseInFlight = true;
       await interaction.deferReply();
 
       let latest = "Starting…";
@@ -225,7 +268,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           .catch(() => undefined);
       } finally {
         clearInterval(flush);
-        reviseInFlight = false;
+        release();
       }
       return;
     }
@@ -246,15 +289,18 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       }
 
       if (target.action === "revise") {
-        if (reviseInFlight) {
+        const busy = held();
+        if (busy) {
           await interaction.reply({
-            content: "A revision is already running. Wait for it to finish.",
+            content: `${describe(busy)} is already running. Wait for it to finish.`,
             flags: MessageFlags.Ephemeral,
           });
           return;
         }
         // showModal must be the *first* response to the interaction -- it
-        // cannot follow a defer or a reply.
+        // cannot follow a defer or a reply. The lock is taken on submit, not
+        // here: holding it across a modal the user might never submit would
+        // wedge every other entry point.
         await interaction.showModal(buildRevisionModal(target.prNumber, target.issueNumber));
         return;
       }

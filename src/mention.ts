@@ -2,6 +2,7 @@ import { EmbedBuilder, type Message } from "discord.js";
 import { buildApprovalMessage } from "./approval.js";
 import { isAdmin } from "./config.js";
 import * as gh from "./github.js";
+import { acquire, describe, release } from "./inflight.js";
 import { parseMentionIntent } from "./intent.js";
 import { log } from "./log.js";
 import { revisePullRequest } from "./pipeline.js";
@@ -116,15 +117,19 @@ export async function handleMention(message: Message): Promise<void> {
   await runRevision(message, target.number, intent.feedback);
 }
 
-let mentionReviseInFlight = false;
-
 async function runRevision(message: Message, prNumber: number, feedback: string): Promise<void> {
-  if (mentionReviseInFlight) {
-    await message.reply("I'm already revising something. Give me a minute.");
+  const lock = acquire({
+    kind: "revise",
+    target: prNumber,
+    startedBy: message.author.username,
+    channelId: message.channelId,
+    at: new Date().toISOString(),
+  });
+  if (!lock.ok) {
+    await message.reply(`${describe(lock.held)} is already running. Give me a minute.`);
     return;
   }
 
-  mentionReviseInFlight = true;
   const status = await message.reply(`On it — revising **PR #${prNumber}**…`);
 
   let latest = "Starting…";
@@ -186,7 +191,7 @@ async function runRevision(message: Message, prNumber: number, feedback: string)
     await status.edit(`That crashed:\n\`\`\`\n${String(err).slice(0, 1200)}\n\`\`\``).catch(() => undefined);
   } finally {
     clearInterval(flush);
-    mentionReviseInFlight = false;
+    release();
   }
 }
 

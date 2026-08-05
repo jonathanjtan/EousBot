@@ -6,20 +6,15 @@ import {
   parseModel,
 } from "../agentopts.js";
 import { buildApprovalMessage } from "../approval.js";
+import { acquire, describe, release } from "../inflight.js";
 import { getFeatureRequest } from "../github.js";
 import { log } from "../log.js";
 import { buildFeature } from "../pipeline.js";
 import type { AgentOptions } from "../agentopts.js";
 import type { Command } from "./types.js";
 
-/**
- * Only one build runs at a time.
- *
- * Builds share the deploy checkout's git directory for worktree bookkeeping,
- * and each one runs an `npm install`. Two at once would race over both. Serial
- * is also plenty: builds take minutes and arrive at human pace.
- */
-let inFlight: { issueNumber: number; startedBy: string } | null = null;
+// The lock is shared with revisions (see src/inflight.ts): all three entry
+// points drive the same worktree bookkeeping in the same checkout.
 
 export const command: Command = {
   adminOnly: true,
@@ -54,9 +49,16 @@ export const command: Command = {
       effort: parseEffort(interaction.options.getString("effort")),
     };
 
-    if (inFlight) {
+    const existing = acquire({
+      kind: "build",
+      target: issueNumber,
+      startedBy: interaction.user.username,
+      channelId: interaction.channelId,
+      at: new Date().toISOString(),
+    });
+    if (!existing.ok) {
       await interaction.reply({
-        content: `Already building **#${inFlight.issueNumber}** (started by ${inFlight.startedBy}). Builds run one at a time — try again when it finishes.`,
+        content: `${describe(existing.held)} is already running. These go one at a time — try again when it finishes.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -64,6 +66,7 @@ export const command: Command = {
 
     const request = await getFeatureRequest(issueNumber);
     if (!request) {
+      release();
       await interaction.reply({
         content: `No feature request numbered **#${issueNumber}**. Check \`/status\`.`,
         flags: MessageFlags.Ephemeral,
@@ -71,7 +74,6 @@ export const command: Command = {
       return;
     }
 
-    inFlight = { issueNumber, startedBy: interaction.user.username };
     await interaction.deferReply();
 
     // Overrides are worth showing while it runs: they change what the build
@@ -145,7 +147,7 @@ export const command: Command = {
         .catch(() => undefined);
     } finally {
       clearInterval(flush);
-      inFlight = null;
+      release();
     }
   },
 };

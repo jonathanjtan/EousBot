@@ -2,6 +2,7 @@ import { config } from "./config.js";
 import * as gh from "./github.js";
 import { LABELS } from "./github.js";
 import { currentSha, git, run } from "./git.js";
+import { describe, held } from "./inflight.js";
 import { log } from "./log.js";
 import { setPendingAnnouncement } from "./state.js";
 
@@ -41,6 +42,19 @@ export async function approveAndDeploy(opts: {
   onProgress?: DeployProgress;
 }): Promise<DeployOutcome> {
   const onProgress = opts.onProgress ?? (() => {});
+
+  // A deploy restarts the service, which SIGTERMs any agent mid-run: its
+  // worktree is orphaned, its Discord message freezes at the last progress
+  // edit, and minutes of work are gone with no explanation. Refuse rather
+  // than race.
+  const busy = held();
+  if (busy) {
+    return {
+      kind: "failed",
+      stage: "precheck",
+      detail: `${describe(busy)} is still running. Deploying now would restart the bot and kill it — try again when it finishes.`,
+    };
+  }
 
   // Re-check mergeability at click time. The PR may have gone stale, been
   // closed, or picked up a conflict since the approval prompt was posted.

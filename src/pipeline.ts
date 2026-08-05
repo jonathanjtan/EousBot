@@ -8,6 +8,7 @@ import {
   createWorktreeOnBranch,
   diffStat,
   hasChanges,
+  mergeBaseInto,
   push,
   run,
 } from "./git.js";
@@ -272,6 +273,17 @@ export async function revisePullRequest(
   const worktree = await createWorktreeOnBranch(branch);
 
   try {
+    // Sync with base before anything else. A branch that has fallen behind is
+    // the common reason a revision is asked for at all, and resolving that is
+    // the harness's job: merging is a git write, which the agent is told not
+    // to do. Conflicts are handed to it as files to edit, which it may.
+    onProgress("Merging the base branch");
+    const merge = await mergeBaseInto(worktree.path, pr.base.ref);
+    const conflicts = merge.merged ? [] : merge.conflicts;
+    if (conflicts.length > 0) {
+      onProgress("Base merge conflicted", `${conflicts.length} file(s) for the agent to resolve`);
+    }
+
     onProgress("Installing dependencies");
     const install = await run("npm", ["ci", "--no-audit", "--no-fund"], {
       cwd: worktree.path,
@@ -291,6 +303,7 @@ export async function revisePullRequest(
       feedback: opts.feedback,
       priorSummary: pr.body?.split("\n---")[0] ?? "",
       priorSessionId,
+      conflicts,
       agentOptions,
       onProgress: (note) => onProgress("Agent progress", note),
     });
@@ -305,9 +318,10 @@ export async function revisePullRequest(
       };
     }
 
-    if (!(await hasChanges(worktree.path))) {
+    if (conflicts.length === 0 && !(await hasChanges(worktree.path))) {
       // The PR is untouched and still reviewable, so this is not a failure --
-      // it just means the feedback produced no edit.
+      // it just means the feedback produced no edit. Skipped when a merge is
+      // in progress: bailing there would abandon the tree mid-merge.
       await gh.setStatus(request.number, LABELS.needsReview);
       return { kind: "no-changes", summary: agentRun.summary };
     }

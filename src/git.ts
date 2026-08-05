@@ -150,6 +150,52 @@ export async function createWorktreeOnBranch(branch: string): Promise<Worktree> 
   };
 }
 
+/**
+ * Merges the base branch into a worktree, reporting any conflicted files.
+ *
+ * Keeping this in the harness rather than the agent's hands is deliberate.
+ * Merging is a git *write*, which the agent is told not to perform, so a
+ * branch that had fallen behind main left it with an impossible task -- and it
+ * improvised, which is worse than either outcome. The harness merges; the
+ * agent only edits the conflicted files, which is ordinary work it is allowed
+ * to do; the harness commits the result.
+ *
+ * GIT_EDITOR=true matters more than it looks: `git merge` opens an editor for
+ * the merge message, and a child process with a pipe for stdin that nobody
+ * writes to blocks until the timeout rather than failing.
+ */
+export async function mergeBaseInto(
+  worktreePath: string,
+  baseBranch: string,
+): Promise<{ merged: true } | { merged: false; conflicts: string[] }> {
+  const fetched = await git(["fetch", "origin", baseBranch], worktreePath);
+  if (!fetched.ok) throw new Error(`git fetch failed: ${fetched.stderr}`);
+
+  const merge = await run(
+    "git",
+    ["-c", "core.editor=true", "merge", "--no-edit", `origin/${baseBranch}`],
+    { cwd: worktreePath, env: { ...process.env, GIT_EDITOR: "true" }, timeoutMs: 120_000 },
+  );
+
+  if (merge.ok) {
+    log.info("Base merged cleanly", { baseBranch });
+    return { merged: true };
+  }
+
+  const unmerged = await git(["diff", "--name-only", "--diff-filter=U"], worktreePath);
+  const conflicts = unmerged.stdout.trim().split("\n").filter(Boolean);
+
+  if (conflicts.length === 0) {
+    // Failed for some reason other than conflicts; abort so the tree is not
+    // left half-merged for the agent to trip over.
+    await git(["merge", "--abort"], worktreePath).catch(() => undefined);
+    throw new Error(`git merge failed without conflicts: ${merge.stderr}`);
+  }
+
+  log.info("Base merged with conflicts", { baseBranch, conflicts });
+  return { merged: false, conflicts };
+}
+
 export async function hasChanges(worktreePath: string): Promise<boolean> {
   const res = await git(["status", "--porcelain"], worktreePath);
   return res.stdout.trim().length > 0;

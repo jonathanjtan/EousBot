@@ -110,7 +110,30 @@ function buildPrompt(request: FeatureRequest): string {
   ].join("\n");
 }
 
-function revisePrompt(request: FeatureRequest, feedback: string, priorSummary: string): string {
+function conflictSection(conflicts: string[]): string[] {
+  if (conflicts.length === 0) return [];
+  return [
+    ``,
+    `## Merge conflicts to resolve first`,
+    ``,
+    `The base branch moved on, so it has been merged into your branch and these`,
+    `files came back conflicted:`,
+    ``,
+    ...conflicts.map((f) => `- ${f}`),
+    ``,
+    `Resolve them by editing the files -- remove the conflict markers and keep`,
+    `the right code from both sides. Do NOT run git. The merge is already in`,
+    `progress and the harness will commit it once the files are clean and the`,
+    `gates pass. Resolving these is part of this task, not a separate one.`,
+  ];
+}
+
+function revisePrompt(
+  request: FeatureRequest,
+  feedback: string,
+  priorSummary: string,
+  conflicts: string[] = [],
+): string {
   return [
     `A reviewer has asked for changes to work you already did. Revise it.`,
     ``,
@@ -125,6 +148,7 @@ function revisePrompt(request: FeatureRequest, feedback: string, priorSummary: s
     `## What the reviewer wants changed`,
     ``,
     feedback,
+    ...conflictSection(conflicts),
     ``,
     `---`,
     `The working tree already contains your previous attempt -- you are editing`,
@@ -157,10 +181,17 @@ export async function reviseFeature(opts: {
   feedback: string;
   priorSummary: string;
   priorSessionId: string | null;
+  /** Files left conflicted by the harness's merge of the base branch. */
+  conflicts?: string[];
   agentOptions?: AgentOptions;
   onProgress?: (note: string) => void;
 }): Promise<AgentRunResult> {
-  const prompt = revisePrompt(opts.request, opts.feedback, opts.priorSummary);
+  const prompt = revisePrompt(
+    opts.request,
+    opts.feedback,
+    opts.priorSummary,
+    opts.conflicts ?? [],
+  );
 
   if (opts.priorSessionId) {
     const resumed = await runAgent({

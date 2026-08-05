@@ -10,9 +10,14 @@ import { test } from "node:test";
  * isn't exercised here -- it needs a real Claude session.
  */
 
-const { collectWindows, describePlan, formatBar, formatWindow, usageColour } = await import(
-  "../src/usage.ts"
-);
+const {
+  collectWindows,
+  describePlan,
+  formatBar,
+  formatWindow,
+  revisionHeadroom,
+  usageColour,
+} = await import("../src/usage.ts");
 
 const payload = {
   five_hour: { utilization: 31, resets_at: "2026-08-05T05:00:00.000Z" },
@@ -105,4 +110,70 @@ test("describePlan explains an account with no plan limits", () => {
     windows: [],
   });
   assert.ok(line.includes("per token"), line);
+});
+
+/** A snapshot carrying the two windows the revision gate looks at. */
+const snapshotAt = (session: number | null, weekly: number | null) => ({
+  subscriptionType: "max",
+  rateLimitsAvailable: true,
+  windows: [
+    { label: "Current session (5h)", utilization: session, resetsAt: null },
+    { label: "This week (all models)", utilization: weekly, resetsAt: null },
+  ],
+});
+
+test("revisionHeadroom allows a revision while both gated windows have room", () => {
+  assert.deepEqual(revisionHeadroom(snapshotAt(31, 35)), { ok: true });
+  assert.deepEqual(revisionHeadroom(snapshotAt(59, 59)), { ok: true });
+});
+
+test("revisionHeadroom refuses at the ceiling, and names the window that is full", () => {
+  const atCeiling = revisionHeadroom(snapshotAt(60, 10));
+  assert.equal(atCeiling.ok, false);
+  assert.ok(!atCeiling.ok && atCeiling.reason.includes("Current session (5h) is at 60%"), atCeiling);
+
+  const weekly = revisionHeadroom(snapshotAt(4, 91));
+  assert.ok(!weekly.ok && weekly.reason.includes("This week (all models) is at 91%"), weekly);
+
+  const both = revisionHeadroom(snapshotAt(72, 88));
+  assert.ok(!both.ok && both.reason.includes("72%") && both.reason.includes("88%"), both);
+});
+
+test("revisionHeadroom ignores windows outside the two it gates on", () => {
+  const busyOpus = {
+    ...snapshotAt(12, 20),
+    windows: [
+      ...snapshotAt(12, 20).windows,
+      { label: "This week (Opus)", utilization: 99, resetsAt: null },
+    ],
+  };
+  assert.deepEqual(revisionHeadroom(busyOpus), { ok: true });
+});
+
+test("revisionHeadroom treats anything it cannot read as no headroom", () => {
+  const missingFigure = revisionHeadroom(snapshotAt(20, null));
+  assert.ok(!missingFigure.ok && missingFigure.reason.includes("no figure"), missingFigure);
+
+  const noWindows = revisionHeadroom({
+    subscriptionType: "max",
+    rateLimitsAvailable: true,
+    windows: [],
+  });
+  assert.equal(noWindows.ok, false);
+
+  const noPlan = revisionHeadroom({
+    subscriptionType: null,
+    rateLimitsAvailable: false,
+    windows: [],
+  });
+  assert.equal(noPlan.ok, false);
+});
+
+test("revisionHeadroom still decides on whichever gated window was reported", () => {
+  const sessionOnly = {
+    subscriptionType: "max",
+    rateLimitsAvailable: true,
+    windows: [{ label: "Current session (5h)", utilization: 15, resetsAt: null }],
+  };
+  assert.deepEqual(revisionHeadroom(sessionOnly), { ok: true });
 });

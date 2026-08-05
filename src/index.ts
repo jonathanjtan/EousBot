@@ -23,6 +23,7 @@ import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
 import { takeInterruptedWork, takePendingAnnouncement } from "./state.js";
+import { cachedRevisionRefusal, revisionRefusal } from "./usagegate.js";
 import { startUsageResetWatch } from "./usagewatch.js";
 
 /**
@@ -163,22 +164,25 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const target = decodeCustomId(interaction.customId);
       if (!target || target.action !== "revise") return;
 
-      // Re-checked here rather than trusted from the button that opened the
-      // modal: the modal carries its own interaction and its own user.
-      if (!isAdmin(interaction.user.id)) {
-        await interaction.reply({
-          content: "Only the bot's admins can request changes.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
       const feedback = interaction.fields.getTextInputValue(FEEDBACK_INPUT_ID).trim();
       if (!feedback) {
         await interaction.reply({
           content: "No feedback given, so nothing to revise.",
           flags: MessageFlags.Ephemeral,
         });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      // The binding usage check, re-made here rather than trusted from the
+      // button that opened the modal: the modal carries its own interaction
+      // and its own user. Reading live figures takes longer than the three
+      // seconds an interaction has to be answered in, so it comes after the
+      // defer -- and before the lock, so a refused request never holds one.
+      const refusal = await revisionRefusal(interaction.user.id);
+      if (refusal) {
+        await interaction.editReply(refusal);
         return;
       }
 
@@ -190,14 +194,11 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         at: new Date().toISOString(),
       });
       if (!lock.ok) {
-        await interaction.reply({
-          content: `${describe(lock.held)} is already running. Wait for it to finish.`,
-          flags: MessageFlags.Ephemeral,
-        });
+        await interaction.editReply(
+          `${describe(lock.held)} is already running. Wait for it to finish.`,
+        );
         return;
       }
-
-      await interaction.deferReply();
 
       let latest = "Starting…";
       let dirty = false;
@@ -280,17 +281,8 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const target = decodeCustomId(interaction.customId);
       if (!target) return;
 
-      // The allowlist check lives here, not on the message. Discord buttons are
-      // clickable by anyone who can see them, so the posted embed is an
-      // invitation, never an authorization.
-      if (!isAdmin(interaction.user.id)) {
-        await interaction.reply({
-          content: "Only the bot's admins can approve or reject a deploy.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
+      // Requesting changes is open to everyone; what stands in for the
+      // allowlist there is the usage gate, checked properly on submit.
       if (target.action === "revise") {
         const busy = held();
         if (busy) {
@@ -300,11 +292,28 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           });
           return;
         }
+        const refusal = cachedRevisionRefusal(interaction.user.id);
+        if (refusal) {
+          await interaction.reply({ content: refusal, flags: MessageFlags.Ephemeral });
+          return;
+        }
         // showModal must be the *first* response to the interaction -- it
         // cannot follow a defer or a reply. The lock is taken on submit, not
         // here: holding it across a modal the user might never submit would
         // wedge every other entry point.
         await interaction.showModal(buildRevisionModal(target.prNumber, target.issueNumber));
+        return;
+      }
+
+      // Deploying and rejecting stay with the admins. The allowlist check
+      // lives here, not on the message: Discord buttons are clickable by
+      // anyone who can see them, so the posted embed is an invitation, never
+      // an authorization.
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({
+          content: "Only the bot's admins can approve or reject a deploy.",
+          flags: MessageFlags.Ephemeral,
+        });
         return;
       }
 

@@ -11,11 +11,12 @@ itself — behind a human approval gate.
                      typecheck + tests must pass
                           │
                           ▼
-                     Pull request ──▶ Discord embed      admins only
+                     Pull request ──▶ Discord embed
                                           │
                  ┌────────────────────────┼────────────────────┐
                  ▼                        ▼                    ▼
           Request changes             Approve               Reject
+       anyone, under 60% usage        admins only          admins only
                  │                        │                    │
        agent revises the branch,   merge ▶ pull ▶         close the PR
        re-gated, new embed  ──┐    build ▶ restart
@@ -32,6 +33,7 @@ design treats that as the central constraint rather than a footnote:
 | Boundary | What enforces it |
 |---|---|
 | Who can cause code to be written | `DISCORD_ADMIN_IDS` — `/build` is admin-only |
+| Who can cause code to be *re*written | Anyone, but only while usage is under 60% (`src/usagegate.ts`) |
 | Who can cause code to be deployed | The same allowlist, re-checked on button click |
 | What the agent may edit | A throwaway git worktree, never the live checkout |
 | What reaches `main` | A PR that passed `tsc` and the test suite |
@@ -39,7 +41,15 @@ design treats that as the central constraint rather than a footnote:
 | Blast radius of a bad generation | A deleted directory and a closed PR |
 
 `/request` is deliberately open — filing an issue costs nothing and spends
-nothing. Everything that consumes tokens or changes running code is gated.
+nothing. Everything that changes running code is gated on the allowlist.
+
+Requesting changes to an open PR is the one token-spending path that is not:
+review is worth more when the people who asked for a feature can say what is
+wrong with it. It is bounded instead by usage — a non-admin's revision is
+refused unless both the current session window and the weekly window are under
+60%, so the reserve an admin needs to finish something stays theirs. **This is
+a path that lets someone else's input cause inference on this account's plan,
+so read the licensing note below and set `ANTHROPIC_API_KEY` accordingly.**
 
 Two things worth being clear-eyed about:
 
@@ -76,6 +86,11 @@ causing the inference:
 
 If you ever widen who can trigger a build, set `ANTHROPIC_API_KEY` in the same
 change. The mode is a one-line config difference; the obligation isn't.
+
+Opening **Request changes** to the guild is exactly such a widening: a
+non-admin's feedback now causes inference. The 60% usage ceiling limits how
+much of the plan that can consume, but it does not change the licensing
+question — run on an API key if the guild is anyone but you.
 
 ## Setup
 
@@ -200,7 +215,15 @@ opens a modal for feedback, then puts the agent back on the same branch with it.
 
 The command exists because a button only lives on the message that carried it:
 embeds scroll away, channels get purged, and a PR opened before the button
-shipped never had one. `/revise` reaches any open PR regardless. The revision passes the same `tsc` and test gates as the
+shipped never had one. `/revise` reaches any open PR regardless.
+
+Both are open to everyone, unlike approving and rejecting: whoever asked for a
+feature is usually the one who can tell it is wrong. Because a revision spends
+tokens, a non-admin's is refused unless the session and weekly usage windows
+are both under 60% — the refusal names the window that is full and when it
+resets. Admins are never gated.
+
+The revision passes the same `tsc` and test gates as the
 original, pushes to the existing branch so the PR updates in place, and posts a
 fresh approval prompt. Repeat as often as you like.
 

@@ -28,10 +28,14 @@ export interface UsageSnapshot {
   windows: UsageWindow[];
 }
 
+/** The two windows any run draws down; the rest are per-model detail. */
+export const SESSION_LABEL = "Current session (5h)";
+export const WEEKLY_LABEL = "This week (all models)";
+
 /** The fixed windows, in the order Claude Code lists them. */
 const WINDOW_LABELS: Array<[keyof RateLimits, string]> = [
-  ["five_hour", "Current session (5h)"],
-  ["seven_day", "This week (all models)"],
+  ["five_hour", SESSION_LABEL],
+  ["seven_day", WEEKLY_LABEL],
   ["seven_day_opus", "This week (Opus)"],
   ["seven_day_sonnet", "This week (Sonnet)"],
 ];
@@ -116,4 +120,61 @@ export function describePlan(snapshot: UsageSnapshot): string {
   const plan = snapshot.subscriptionType;
   const named = plan ? `Claude ${plan.charAt(0).toUpperCase()}${plan.slice(1)}` : "Claude";
   return `${named} — limits shared with everything else this machine runs.`;
+}
+
+/**
+ * How full a window may be before a non-admin revision is turned away.
+ *
+ * Requesting changes is open to everyone, but it starts an agent run on the
+ * same plan limits every build draws on, and the person starting it is not
+ * the person who can approve the result. Reserving the top of each window for
+ * admins keeps an enthusiastic reviewer from spending the week's budget on
+ * work nobody has agreed to merge.
+ */
+export const OPEN_REVISION_CEILING = 60;
+
+export type RevisionHeadroom = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Whether a non-admin may start a revision right now.
+ *
+ * Both gated windows have to be readable and under the ceiling. Anything the
+ * API declines to report is treated as no headroom rather than as headroom:
+ * the failure mode of guessing wrong here is burning limits an admin was
+ * saving, which is exactly what the gate exists to prevent.
+ */
+export function revisionHeadroom(snapshot: UsageSnapshot): RevisionHeadroom {
+  if (!snapshot.rateLimitsAvailable) {
+    return {
+      ok: false,
+      reason: "this account reports no plan limits, so there is no headroom to read",
+    };
+  }
+
+  const gated = snapshot.windows.filter(
+    (w) => w.label === SESSION_LABEL || w.label === WEEKLY_LABEL,
+  );
+  if (gated.length === 0) {
+    return { ok: false, reason: "Claude reported no session or weekly window to check" };
+  }
+
+  const unreadable = gated.filter((w) => w.utilization === null);
+  if (unreadable.length > 0) {
+    return {
+      ok: false,
+      reason: `${unreadable.map((w) => w.label).join(" and ")} reported no figure`,
+    };
+  }
+
+  const over = gated.filter((w) => (w.utilization ?? 0) >= OPEN_REVISION_CEILING);
+  if (over.length > 0) {
+    return {
+      ok: false,
+      reason: over
+        .map((w) => `${w.label} is at ${Math.round(w.utilization ?? 0)}%`)
+        .join(", and "),
+    };
+  }
+
+  return { ok: true };
 }

@@ -113,6 +113,43 @@ export async function createWorktree(branch: string, baseBranch: string): Promis
   };
 }
 
+/**
+ * Creates a worktree on an *existing* remote branch, for revising an open PR.
+ *
+ * The difference from createWorktree matters: that one starts from the base
+ * branch, which is right for a new feature and wrong for a revision. Revising
+ * has to build on what the agent already wrote, or the reviewer's feedback
+ * arrives at a tree that no longer contains the thing being critiqued.
+ */
+export async function createWorktreeOnBranch(branch: string): Promise<Worktree> {
+  const path = join(config.runtime.repoPath, ".worktrees", branch.replace(/\//g, "_"));
+
+  await rm(path, { recursive: true, force: true });
+  await git(["worktree", "prune"]);
+  // Drop the local ref so the worktree tracks the remote's current tip rather
+  // than a stale local copy from the build that created it.
+  await git(["branch", "-D", branch]);
+
+  const fetched = await git(["fetch", "origin", branch]);
+  if (!fetched.ok) throw new Error(`git fetch failed: ${fetched.stderr}`);
+
+  const created = await git(["worktree", "add", "-b", branch, path, `origin/${branch}`]);
+  if (!created.ok) throw new Error(`git worktree add failed: ${created.stderr}`);
+
+  log.info("Worktree created on existing branch", { branch, path });
+
+  return {
+    path,
+    branch,
+    cleanup: async () => {
+      await git(["worktree", "remove", "--force", path]).catch(() => undefined);
+      await rm(path, { recursive: true, force: true }).catch(() => undefined);
+      await git(["worktree", "prune"]).catch(() => undefined);
+      log.debug("Worktree cleaned up", { branch });
+    },
+  };
+}
+
 export async function hasChanges(worktreePath: string): Promise<boolean> {
   const res = await git(["status", "--porcelain"], worktreePath);
   return res.stdout.trim().length > 0;

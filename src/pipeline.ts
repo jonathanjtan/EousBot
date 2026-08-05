@@ -1,9 +1,17 @@
-import { implementFeature } from "./agent.js";
+import { implementFeature, reviseFeature } from "./agent.js";
 import { describeAgentOptions } from "./agentopts.js";
 import * as gh from "./github.js";
 import { LABELS } from "./github.js";
-import { commitAll, createWorktree, diffStat, hasChanges, push, run } from "./git.js";
-import { branchNameFor } from "./naming.js";
+import {
+  commitAll,
+  createWorktree,
+  createWorktreeOnBranch,
+  diffStat,
+  hasChanges,
+  push,
+  run,
+} from "./git.js";
+import { branchNameFor, sessionIdFromPrBody } from "./naming.js";
 import { log } from "./log.js";
 import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
@@ -32,9 +40,23 @@ export type BuildOutcome =
   | { kind: "no-changes"; summary: string }
   | { kind: "failed"; stage: string; detail: string; summary: string };
 
+export type ReviseOutcome =
+  | {
+      kind: "revised";
+      prNumber: number;
+      prUrl: string;
+      summary: string;
+      diffStat: string;
+      costUsd: number | null;
+      sessionId: string | null;
+    }
+  | { kind: "no-changes"; summary: string }
+  | { kind: "failed"; stage: string; detail: string; summary: string };
+
 export interface BuildProgress {
   (stage: string, detail?: string): void;
 }
+
 
 interface Gate {
   name: string;
@@ -195,6 +217,156 @@ export async function buildFeature(
     throw err;
   } finally {
     // The branch lives on the remote now; the local worktree is disposable.
+    await worktree.cleanup();
+  }
+}
+
+/**
+ * Revises an open pull request from reviewer feedback.
+ *
+ * Deliberately the same shape as buildFeature, and deliberately subject to the
+ * same gates: a revision that no longer typechecks is worse than the version
+ * being critiqued, so "the reviewer asked for it" is not a reason to skip the
+ * checks. Pushing to the existing branch updates the PR in place, which keeps
+ * the whole conversation -- original diff, feedback, revision -- in one place
+ * on GitHub rather than scattered across abandoned PRs.
+ */
+export async function revisePullRequest(
+  opts: {
+    prNumber: number;
+    feedback: string;
+    requestedBy: string;
+  },
+  onProgress: BuildProgress = () => {},
+  agentOptions: AgentOptions = {},
+): Promise<ReviseOutcome> {
+  const pr = await gh.getPullRequest(opts.prNumber);
+  if (pr.state !== "open") {
+    return {
+      kind: "failed",
+      stage: "precheck",
+      detail: `PR #${opts.prNumber} is ${pr.state}, not open.`,
+      summary: "",
+    };
+  }
+
+  const branch = pr.head.ref;
+  const issueNumber = Number(pr.body?.match(/Closes #(\d+)/)?.[1] ?? NaN);
+  const request = Number.isInteger(issueNumber)
+    ? await gh.getFeatureRequest(issueNumber)
+    : null;
+
+  if (!request) {
+    return {
+      kind: "failed",
+      stage: "precheck",
+      detail: `Could not find the feature request behind PR #${opts.prNumber}.`,
+      summary: "",
+    };
+  }
+
+  const priorSessionId = sessionIdFromPrBody(pr.body);
+  await gh.setStatus(request.number, LABELS.building);
+
+  onProgress("Checking out the PR branch", branch);
+  const worktree = await createWorktreeOnBranch(branch);
+
+  try {
+    onProgress("Installing dependencies");
+    const install = await run("npm", ["ci", "--no-audit", "--no-fund"], {
+      cwd: worktree.path,
+      timeoutMs: 10 * 60_000,
+    });
+    if (!install.ok) {
+      await run("npm", ["install", "--no-audit", "--no-fund"], {
+        cwd: worktree.path,
+        timeoutMs: 10 * 60_000,
+      });
+    }
+
+    onProgress("Agent is revising", priorSessionId ? "resuming prior session" : "fresh session");
+    const agentRun = await reviseFeature({
+      request,
+      worktreePath: worktree.path,
+      feedback: opts.feedback,
+      priorSummary: pr.body?.split("\n---")[0] ?? "",
+      priorSessionId,
+      agentOptions,
+      onProgress: (note) => onProgress("Agent progress", note),
+    });
+
+    if (!agentRun.ok) {
+      await gh.setStatus(request.number, LABELS.needsReview);
+      return {
+        kind: "failed",
+        stage: "agent",
+        detail: agentRun.error ?? "unknown",
+        summary: agentRun.summary,
+      };
+    }
+
+    if (!(await hasChanges(worktree.path))) {
+      // The PR is untouched and still reviewable, so this is not a failure --
+      // it just means the feedback produced no edit.
+      await gh.setStatus(request.number, LABELS.needsReview);
+      return { kind: "no-changes", summary: agentRun.summary };
+    }
+
+    onProgress("Reinstalling after agent changes");
+    await run("npm", ["install", "--no-audit", "--no-fund"], {
+      cwd: worktree.path,
+      timeoutMs: 10 * 60_000,
+    });
+
+    for (const gate of GATES) {
+      onProgress(`Running ${gate.name}`);
+      const result = await run("npm", gate.args, { cwd: worktree.path, timeoutMs: 10 * 60_000 });
+      if (!result.ok) {
+        const detail = tail(`${result.stdout}\n${result.stderr}`);
+        // Leave the PR at needs-review: the previously pushed commit still
+        // passed, so the branch on GitHub is not what just broke.
+        await gh.setStatus(request.number, LABELS.needsReview);
+        await gh.comment(
+          request.number,
+          `**Revision failed** at \`${gate.name}\`. PR #${opts.prNumber} is unchanged.\n\n\`\`\`\n${detail}\n\`\`\``,
+        );
+        return { kind: "failed", stage: gate.name, detail, summary: agentRun.summary };
+      }
+    }
+
+    onProgress("Committing and pushing");
+    const baseBranch = pr.base.ref;
+    const stat = await diffStat(worktree.path, baseBranch);
+    await commitAll(worktree.path, `Revise: ${opts.feedback.split("\n")[0]?.slice(0, 60) ?? "review feedback"}`);
+    await push(worktree.path, branch);
+
+    await gh.comment(
+      request.number,
+      [
+        `**Revised** on feedback from ${opts.requestedBy}:`,
+        "",
+        `> ${opts.feedback.replace(/\n/g, "\n> ")}`,
+        "",
+        agentRun.summary,
+      ].join("\n"),
+    );
+    await gh.setStatus(request.number, LABELS.needsReview);
+
+    log.info("PR revised", { pr: opts.prNumber, issue: request.number });
+
+    return {
+      kind: "revised",
+      prNumber: opts.prNumber,
+      prUrl: pr.html_url,
+      summary: agentRun.summary,
+      diffStat: stat,
+      costUsd: agentRun.costUsd,
+      sessionId: agentRun.sessionId ?? priorSessionId,
+    };
+  } catch (err) {
+    await gh.setStatus(request.number, LABELS.needsReview).catch(() => undefined);
+    throw err;
+  } finally {
     await worktree.cleanup();
   }
 }

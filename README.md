@@ -11,10 +11,16 @@ itself — behind a human approval gate.
                      typecheck + tests must pass
                           │
                           ▼
-                     Pull request ──▶ Discord embed with Approve / Reject
-                                             │            admins only
-                                             ▼
-                              merge ▶ pull ▶ build ▶ restart
+                     Pull request ──▶ Discord embed      admins only
+                                          │
+                 ┌────────────────────────┼────────────────────┐
+                 ▼                        ▼                    ▼
+          Request changes             Approve               Reject
+                 │                        │                    │
+       agent revises the branch,   merge ▶ pull ▶         close the PR
+       re-gated, new embed  ──┐    build ▶ restart
+                           ▲  │
+                           └──┘   iterate until it's right
 ```
 
 ## Why the gate exists
@@ -155,6 +161,29 @@ else:
 - **Reprovisioning scripts can undo the installer.** If the host is built from
   a script that also manages its own systemd units or shutdown schedules,
   re-running it may need `install.sh` run again afterwards.
+
+## Iterating on a pull request
+
+**Request changes** opens a modal for feedback, then puts the agent back on the
+same branch with it. The revision passes the same `tsc` and test gates as the
+original, pushes to the existing branch so the PR updates in place, and posts a
+fresh approval prompt. Repeat as often as you like.
+
+Two details that make this better than rejecting and rebuilding:
+
+- **The agent resumes its original session.** The session id is written into
+  every PR body, so it is recovered from GitHub rather than tracked locally.
+  Resuming means the agent still knows *why* it made its first choices instead
+  of inferring them from the diff. If the session is gone, it falls back to a
+  fresh one — the prompt carries the full context either way, so resume is an
+  improvement rather than a dependency.
+- **A failed revision leaves the PR alone.** The previously pushed commit
+  already passed the gates, so nothing is pushed unless the revision passes
+  too. You never lose a working version to a bad follow-up.
+
+Feedback is treated as a genuine change request but does not outrank the
+agent's ground rules: asked to weaken the approval gate, it declines that part,
+does the rest, and says so.
 
 ## Adding commands
 

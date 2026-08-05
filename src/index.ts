@@ -6,12 +6,18 @@ import {
   type Interaction,
   type TextChannel,
 } from "discord.js";
-import { decodeCustomId } from "./approval.js";
+import {
+  FEEDBACK_INPUT_ID,
+  buildApprovalMessage,
+  buildRevisionModal,
+  decodeCustomId,
+} from "./approval.js";
 import { commandsByName } from "./commands/index.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
+import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
 import { takePendingAnnouncement } from "./state.js";
@@ -30,6 +36,9 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 /** Serializes deploys the same way builds are serialized, for the same reason. */
 let deployInFlight = false;
+
+/** Revisions share the worktree machinery with builds, so they serialize too. */
+let reviseInFlight = false;
 
 client.once(Events.ClientReady, async (ready) => {
   const sha = await currentSha().catch(() => "unknown");
@@ -105,6 +114,117 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
+    if (interaction.isModalSubmit()) {
+      const target = decodeCustomId(interaction.customId);
+      if (!target || target.action !== "revise") return;
+
+      // Re-checked here rather than trusted from the button that opened the
+      // modal: the modal carries its own interaction and its own user.
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({
+          content: "Only the bot's admins can request changes.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const feedback = interaction.fields.getTextInputValue(FEEDBACK_INPUT_ID).trim();
+      if (!feedback) {
+        await interaction.reply({
+          content: "No feedback given, so nothing to revise.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (reviseInFlight) {
+        await interaction.reply({
+          content: "A revision is already running. Wait for it to finish.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      reviseInFlight = true;
+      await interaction.deferReply();
+
+      let latest = "Starting…";
+      let dirty = false;
+      const flush = setInterval(() => {
+        if (!dirty) return;
+        dirty = false;
+        interaction
+          .editReply(`**Revising PR #${target.prNumber}**\n\`${latest}\``)
+          .catch(() => undefined);
+      }, 4000);
+
+      try {
+        const outcome = await revisePullRequest(
+          {
+            prNumber: target.prNumber,
+            feedback,
+            requestedBy: interaction.user.username,
+          },
+          (stage, detail) => {
+            latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
+            dirty = true;
+          },
+        );
+        clearInterval(flush);
+
+        switch (outcome.kind) {
+          case "revised": {
+            await interaction.editReply(
+              [
+                `**PR #${outcome.prNumber} revised.**`,
+                `> ${feedback.split("\n")[0]?.slice(0, 200)}`,
+              ].join("\n"),
+            );
+            // A fresh approval prompt, so the revision gets the same gate the
+            // original did rather than inheriting its approval.
+            await interaction.followUp(
+              buildApprovalMessage({
+                prNumber: outcome.prNumber,
+                prUrl: outcome.prUrl,
+                issueNumber: target.issueNumber ?? 0,
+                title: `Revision of PR #${outcome.prNumber}`,
+                summary: outcome.summary,
+                diffStat: outcome.diffStat,
+                costUsd: outcome.costUsd,
+                requestedBy: interaction.user.id,
+              }),
+            );
+            break;
+          }
+          case "no-changes":
+            await interaction.editReply(
+              `**PR #${target.prNumber} unchanged** — the agent read the feedback but made no edit.\n\n${outcome.summary.slice(0, 1000)}`,
+            );
+            break;
+          case "failed":
+            await interaction.editReply(
+              [
+                `**Revision failed** at \`${outcome.stage}\`. PR #${target.prNumber} is untouched and still reviewable.`,
+                "```",
+                outcome.detail.slice(0, 1400),
+                "```",
+              ].join("\n"),
+            );
+            break;
+        }
+      } catch (err) {
+        clearInterval(flush);
+        log.error("Revision threw", { pr: target.prNumber, err: String(err) });
+        await interaction
+          .editReply(`Revision crashed:\n\`\`\`\n${String(err).slice(0, 1400)}\n\`\`\``)
+          .catch(() => undefined);
+      } finally {
+        clearInterval(flush);
+        reviseInFlight = false;
+      }
+      return;
+    }
+
     if (interaction.isButton()) {
       const target = decodeCustomId(interaction.customId);
       if (!target) return;
@@ -117,6 +237,20 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           content: "Only the bot's admins can approve or reject a deploy.",
           flags: MessageFlags.Ephemeral,
         });
+        return;
+      }
+
+      if (target.action === "revise") {
+        if (reviseInFlight) {
+          await interaction.reply({
+            content: "A revision is already running. Wait for it to finish.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        // showModal must be the *first* response to the interaction -- it
+        // cannot follow a defer or a reply.
+        await interaction.showModal(buildRevisionModal(target.prNumber, target.issueNumber));
         return;
       }
 

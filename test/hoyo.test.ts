@@ -14,10 +14,12 @@ import { test } from "node:test";
 
 const {
   DEFAULT_COUNT,
+  GAME_CHOICES,
   GAMES,
   cleanTitle,
   eventFields,
   expiringSoonest,
+  feedsFor,
   parseAnnouncements,
   parseServerTime,
   urgencyColour,
@@ -252,4 +254,15 @@ test("every game is asked for the English list of its own announcements", () => 
     assert.ok(url.pathname.endsWith("/announcement/api/getAnnList"), url.pathname);
   }
   assert.equal(new Set(GAMES.map((g) => g.url)).size, 3, "two games share a feed");
+});
+
+test("the game option narrows the feeds to one, and anything else asks all three", () => {
+  for (const choice of GAME_CHOICES) {
+    assert.deepEqual(
+      feedsFor(choice.value).map((feed) => feed.label),
+      [choice.label],
+    );
+  }
+  assert.equal(feedsFor(null).length, GAMES.length);
+  assert.equal(feedsFor("honkai impact").length, GAMES.length);
 });

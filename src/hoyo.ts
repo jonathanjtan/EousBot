@@ -112,6 +112,22 @@ export const GAMES: HoyoFeed[] = SOURCES.map((source) => ({
   notices: source.notices,
 }));
 
+/**
+ * The values `/hoyohell`'s game option takes, mapped to the feed labels. The
+ * values are what Discord sends back, so they are the short names people say.
+ */
+export const GAME_CHOICES: Array<{ value: string; name: string; label: string }> = [
+  { value: "genshin", name: "Genshin Impact", label: "Genshin" },
+  { value: "hsr", name: "Honkai: Star Rail", label: "Star Rail" },
+  { value: "zzz", name: "Zenless Zone Zero", label: "ZZZ" },
+];
+
+/** The feeds one game option asks for, or all three when it names none of them. */
+export function feedsFor(choice: string | null): HoyoFeed[] {
+  const label = GAME_CHOICES.find((game) => game.value === choice)?.label;
+  return label === undefined ? GAMES : GAMES.filter((game) => game.label === label);
+}
+
 export interface HoyoEvent {
   /** The short game label, as shown to the reader. */
   game: string;
@@ -328,14 +344,17 @@ export interface EventFetch {
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * Reads all three notice boards.
+ * Reads the given notice boards, all three by default.
  *
  * One game being unreachable must not cost the other two their answer, so the
  * failures come back alongside the events rather than as a thrown error.
  */
-export async function fetchEvents(timeoutMs = FETCH_TIMEOUT_MS): Promise<EventFetch> {
+export async function fetchEvents(
+  feeds: HoyoFeed[] = GAMES,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<EventFetch> {
   const results = await Promise.allSettled(
-    GAMES.map(async (game) => {
+    feeds.map(async (game) => {
       const response = await fetch(game.url, {
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(timeoutMs),
@@ -356,7 +375,7 @@ export async function fetchEvents(timeoutMs = FETCH_TIMEOUT_MS): Promise<EventFe
   const events: HoyoEvent[] = [];
   const failures: EventFetch["failures"] = [];
   results.forEach((result, index) => {
-    const game = GAMES[index]?.label ?? "unknown";
+    const game = feeds[index]?.label ?? "unknown";
     if (result.status === "fulfilled") events.push(...result.value);
     else failures.push({ game, error: String(result.reason) });
   });

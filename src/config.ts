@@ -55,7 +55,11 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
 
   AGENT_MODEL: z.string().default("claude-opus-5"),
-  AGENT_MAX_TURNS: z.coerce.number().int().positive().default(60),
+  // 60 was a ceiling nothing ever approached -- the most expensive build
+  // measured used 82 requests across four review rounds, not one run. A lower
+  // bound turns "this is going badly" into a fast, cheap failure instead of a
+  // long one. See docs/usage.md.
+  AGENT_MAX_TURNS: z.coerce.number().int().positive().default(40),
 
   // Standing reasoning effort for builds; /build can override it per build.
   AGENT_EFFORT: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT),

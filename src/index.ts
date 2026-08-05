@@ -228,8 +228,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           case "revised": {
             await interaction.editReply(
               [
-                `**PR #${outcome.prNumber} revised.**`,
+                `**PR #${outcome.prNumber} revised.** (round ${outcome.round})`,
                 `> ${feedback.split("\n")[0]?.slice(0, 200)}`,
+                ...(outcome.round >= 3
+                  ? [
+                      "",
+                      `_Round ${outcome.round} — each round re-reads the whole accumulated session, so these get steeper. If it's still not right, rejecting and rebuilding from a sharper request is often cheaper than another round._`,
+                    ]
+                  : []),
               ].join("\n"),
             );
             // A fresh approval prompt, so the revision gets the same gate the

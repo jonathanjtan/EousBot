@@ -37,3 +37,38 @@ export function branchNameFor(issueNumber: number, title: string): string {
 export function sessionIdFromPrBody(body: string | null | undefined): string | null {
   return body?.match(/Agent session `([0-9a-fA-F-]{8,})`/)?.[1] ?? null;
 }
+
+/**
+ * Whether a failed resume means the session is genuinely gone.
+ *
+ * Narrow on purpose. The falsy branch costs nothing; the truthy branch buys a
+ * second full agent run, so a regex that merely matched the word "session"
+ * turned any unrelated failure into a doubled bill for one revision. Both
+ * halves of the pattern must hold: something about a session, *and* something
+ * about it being absent.
+ */
+/**
+ * How many revision rounds a PR has already had, counted from its own body.
+ *
+ * The measured data behind docs/usage.md is unambiguous: the expensive builds
+ * are not the ones with the most code, they are the ones with the most review
+ * rounds. Each cold re-entry re-writes the whole accumulated transcript as
+ * cache-creation input before generating a token, and it grows every round --
+ * 35k, then 58k, then 79k, then 91k on the worst-measured feature.
+ *
+ * Nothing enforces a limit. The point is that the fourth round should not be
+ * invisible while it is the most expensive one.
+ */
+export function revisionRoundsFromPrBody(body: string | null | undefined): number {
+  if (!body) return 0;
+  return body.match(/^_Revision \d+/gm)?.length ?? 0;
+}
+
+export function looksLikeMissingSession(error: string | undefined): boolean {
+  if (!error) return false;
+  const mentionsSession = /\bsession\b/i.test(error);
+  const mentionsAbsence = /\b(not found|no such|does not exist|doesn'?t exist|unknown|missing|invalid)\b/i.test(
+    error,
+  );
+  return mentionsSession && mentionsAbsence;
+}

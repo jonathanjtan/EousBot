@@ -12,7 +12,7 @@ import {
   push,
   run,
 } from "./git.js";
-import { branchNameFor, sessionIdFromPrBody } from "./naming.js";
+import { branchNameFor, revisionRoundsFromPrBody, sessionIdFromPrBody } from "./naming.js";
 import { log } from "./log.js";
 import { usageReminderSubscribers } from "./state.js";
 import type { AgentOptions } from "./agentopts.js";
@@ -51,6 +51,8 @@ export type ReviseOutcome =
       diffStat: string;
       costUsd: number | null;
       sessionId: string | null;
+      /** Which review round this was; the fourth costs far more than the first. */
+      round: number;
     }
   | { kind: "no-changes"; summary: string }
   | { kind: "failed"; stage: string; detail: string; summary: string };
@@ -133,12 +135,26 @@ export async function buildFeature(
     refreshUsageAfterAgentRun();
 
     if (!agentRun.ok) {
-      await gh.setStatus(request.number, LABELS.failed);
-      await gh.comment(
-        request.number,
-        `**Build failed** during code generation.\n\n\`\`\`\n${agentRun.error ?? "unknown error"}\n\`\`\``,
-      );
-      return { kind: "failed", stage: "agent", detail: agentRun.error ?? "unknown", summary: agentRun.summary };
+      // A deliberate /stop is not a failure and should not read as one; the
+      // request goes back on the pile rather than getting a scary label.
+      const stopped = agentRun.error === "STOPPED";
+      await gh.setStatus(request.number, stopped ? LABELS.request : LABELS.failed);
+      if (!stopped) {
+        await gh.comment(
+          request.number,
+          `**Build failed** during code generation.\n\n\`\`\`\n${agentRun.error ?? "unknown error"}\n\`\`\``,
+        );
+      }
+      return {
+        kind: "failed",
+        stage: stopped ? "stopped" : "agent",
+        detail: stopped
+          ? `Stopped after ${agentRun.turns} turns` +
+            (agentRun.costUsd !== null ? ` and $${agentRun.costUsd.toFixed(3)}` : "") +
+            `. Nothing was pushed.`
+          : (agentRun.error ?? "unknown"),
+        summary: agentRun.summary,
+      };
     }
 
     if (!(await hasChanges(worktree.path))) {
@@ -373,6 +389,18 @@ export async function revisePullRequest(
     await commitAll(worktree.path, `Revise: ${opts.feedback.split("\n")[0]?.slice(0, 60) ?? "review feedback"}`);
     await push(worktree.path, branch);
 
+    // Stamp the round into the PR body. It makes the count recoverable next
+    // time, and puts the compounding cost where a reviewer sees it before
+    // asking for round five rather than after.
+    const round = revisionRoundsFromPrBody(pr.body) + 1;
+    const roundNote =
+      `\n\n_Revision ${round}` +
+      (agentRun.costUsd !== null ? `, $${agentRun.costUsd.toFixed(3)}` : "") +
+      `: ${opts.feedback.split("\n")[0]?.slice(0, 120) ?? ""}_`;
+    await gh
+      .updatePullRequestBody(opts.prNumber, `${pr.body ?? ""}${roundNote}`)
+      .catch((err) => log.warn("Could not stamp the revision round", { err: String(err) }));
+
     await gh.comment(
       request.number,
       [
@@ -395,6 +423,7 @@ export async function revisePullRequest(
       diffStat: stat,
       costUsd: agentRun.costUsd,
       sessionId: agentRun.sessionId ?? priorSessionId,
+      round,
     };
   } catch (err) {
     await gh.setStatus(request.number, LABELS.needsReview).catch(() => undefined);

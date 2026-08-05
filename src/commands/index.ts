@@ -1,3 +1,4 @@
+import { command as active } from "./active.js";
 import { command as build } from "./build.js";
 import { command as eightball } from "./eightball.js";
 import { command as hoyohell } from "./hoyohell.js";
@@ -8,6 +9,7 @@ import { command as request } from "./request.js";
 import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
 import { command as status } from "./status.js";
+import { command as stop } from "./stop.js";
 import { command as usage } from "./usage.js";
 import type { Command } from "./types.js";
 
@@ -23,6 +25,8 @@ export const commands: Command[] = [
   request,
   status,
   build,
+  stop,
+  active,
   revise,
   roll,
   eightball,

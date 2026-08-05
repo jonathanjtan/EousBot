@@ -156,7 +156,12 @@ async function runRevision(message: Message, prNumber: number, feedback: string)
         // Reply to the status message rather than the channel: `send` is not
         // available on every channel type a message can arrive in, and a reply
         // also keeps the revision attached to the request that caused it.
-        await status.edit(`**PR #${outcome.prNumber} revised.**`);
+        await status.edit(
+          `**PR #${outcome.prNumber} revised.** (round ${outcome.round})` +
+            (outcome.round >= 3
+              ? `\n_Each round re-reads the whole session, so these get steeper — a rebuild from a sharper request may be cheaper than another round._`
+              : ""),
+        );
         await status.reply(
           buildApprovalMessage({
             prNumber: outcome.prNumber,

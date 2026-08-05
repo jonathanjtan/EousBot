@@ -6,8 +6,9 @@ interactive `claude` session would, and the reasons are structural rather than
 mysterious. This document records what was measured, what explains it, and
 which levers would actually move the number.
 
-Nothing here changes behaviour. It exists so the next person asking the
-question does not have to re-derive the answer from transcripts.
+The measurements below were taken before any of it was fixed. The levers at the
+end have since been applied — see that section for what changed and where — so
+read the numbers as the starting point, not the current state.
 
 ## What was measured
 
@@ -112,12 +113,13 @@ the same one-line change interactively, you would usually skip both.
 
 ### Nothing stops a run early
 
-`maxTurns` defaults to 60 (`src/config.ts:58`). That is a ceiling, not a
-target, but it is also the *only* stop condition: builds run unattended, so
-there is no one to read three paragraphs of exploration and say "yes, that
-file, just change the constant". Interactive sessions get interrupted
-constantly, and every interruption is turns not taken. Unless
-`AGENT_SESSION_VISIBILITY=remote` is set, there is no interruption path at all.
+`maxTurns` was the *only* stop condition: builds run unattended, so there was
+no one to read three paragraphs of exploration and say "yes, that file, just
+change the constant". Interactive sessions get interrupted constantly, and
+every interruption is turns not taken.
+
+This was the most fixable finding in the document, and it is now fixed —
+`/stop` and `/active` exist because of it. See **Active mode** below.
 
 Effort was already dialled back from the SDK default to `medium` for exactly
 this reason (see `DEFAULT_EFFORT` in `src/agentopts.ts`), which is why recent
@@ -159,22 +161,60 @@ ruled out rather than re-investigated:
 
 ## Levers, most effective first
 
-None of these are applied. They are listed so the choice stays with a human.
+All of these are now applied. What follows is what was done and where, so the
+next measurement can tell which of them actually moved the number.
 
-1. **Set `settingSources: []` on the build query.** One line. Drops the
-   inherited MCP tool schemas and skill descriptions from the prefix of every
-   request of every build. The repository has no `CLAUDE.md` and no `.claude/`
-   directory, so nothing this bot relies on is loaded from those sources
-   today. Largest saving for the least risk.
-2. **Keep review rounds few and specific.** Feedback of the form "change the
-   constant in X to Y" costs a fraction of "this doesn't feel right". The
-   compounding re-write above means the fourth round is the most expensive one
-   regardless of how small the change is.
-3. **Tighten `looksLikeMissingSession`** to the SDK's actual missing-session
-   error, so an unrelated failure cannot silently buy a second agent run.
-4. **Lower `AGENT_MAX_TURNS`** for routine work. A build that would have
-   needed 60 turns is usually a build that should have been split into two
-   requests anyway.
-5. **Consider `AGENT_SESSION_VISIBILITY=remote`** if someone is around.
-   Steering a run mid-flight is the interactive session's real cost advantage,
-   and it is available here; it is just off by default.
+1. **`settingSources: ['project']` on the build query** (`src/agent.ts`).
+   Omitting the field loaded every filesystem settings source, so each build
+   inherited the host account's global MCP servers and skills — roughly ninety
+   tool schemas — in the prefix of every request of every turn. Applied as
+   `['project']` rather than the `[]` originally suggested: the repository has
+   no `.claude/` today so the saving is identical, but a `CLAUDE.md` added
+   later reaches the agent without a code change.
+
+   Worth measuring rather than assuming: in `hostAuth` mode the account's
+   claude.ai connectors may not be governed by this setting at all. The next
+   transcript sample will show whether the prefix actually shrank.
+
+2. **Review rounds are counted and surfaced.** Each revision stamps
+   `_Revision N, $cost_` into the PR body, and from round three Discord says
+   plainly that a rebuild from a sharper request is often cheaper than another
+   round. Nothing is blocked — the point is that the fourth round was the most
+   expensive one *and* the least visible.
+
+3. **`looksLikeMissingSession` now requires both halves** (`src/naming.ts`):
+   the error must mention a session *and* mention absence. The old pattern
+   matched any error containing "session", so an unrelated failure bought a
+   second full agent run. Covered by `test/usage-levers.test.ts`.
+
+4. **`AGENT_MAX_TURNS` defaults to 40** (`src/config.ts`), and hitting the
+   ceiling now says so instead of surfacing as a bare subtype — the work is
+   half-done and the whole run is paid for, which is worth naming.
+
+5. **Active mode** (`/active`) turns on Remote Control for builds while
+   someone is around, and **`/stop`** interrupts a run from Discord. This was
+   the last lever, and it turned out to be the largest behavioural one: see
+   below.
+
+## Active mode
+
+The section above lists "nothing stops a run early" as a cost driver in its own
+right, because every remaining turn re-reads the entire accumulated context. A
+run that is visibly going nowhere gets *more* expensive the longer nobody stops
+it, and unattended builds had no stop condition but `maxTurns`.
+
+`/stop` interrupts the agent mid-run through the SDK's `interrupt()`. It is
+safe by construction: nothing is pushed until the gates pass, so an interrupted
+run leaves the PR untouched and costs only what it had already spent. A stopped
+build is reported as stopped rather than failed, and its request returns to the
+queue rather than being labelled broken.
+
+`/active on` opens the Remote Control bridge for new builds, so a run can be
+steered from the Claude app instead of watched through Discord progress text.
+It is a toggle rather than a setting because it uploads session transcripts to
+claude.ai, which is the wrong default for runs nobody is watching. It can only
+raise visibility: `AGENT_SESSION_VISIBILITY=off` still wins, since someone who
+set that wants nothing leaving the box.
+
+Together these are the interactive session's real advantage, which is not a
+cheaper model or a shorter prompt — it is a human who interrupts.

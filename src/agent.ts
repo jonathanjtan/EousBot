@@ -1,6 +1,9 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { effectiveVisibility } from "./active.js";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import { looksLikeMissingSession } from "./naming.js";
+import { setRunning, wasStopped } from "./running.js";
 import { collectWindows } from "./usage.js";
 import { noteUsageSnapshot } from "./usagewatch.js";
 import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -84,7 +87,7 @@ export interface AgentRunResult {
  * repository's code -- to claude.ai. `off` keeps everything on the box.
  */
 function visibilitySettings(): Record<string, unknown> {
-  switch (config.agent.sessionVisibility) {
+  switch (effectiveVisibility()) {
     case "view":
       return { autoUploadSessions: true };
     case "remote":
@@ -222,10 +225,6 @@ export async function reviseFeature(opts: {
   });
 }
 
-function looksLikeMissingSession(error: string | undefined): boolean {
-  if (!error) return false;
-  return /session|resume|not found|no such/i.test(error);
-}
 
 export async function implementFeature(opts: {
   request: FeatureRequest;
@@ -268,7 +267,7 @@ async function runAgent(opts: {
     cwd: worktreePath,
     model,
     effort,
-    visibility: config.agent.sessionVisibility,
+    visibility: effectiveVisibility(),
     resume: opts.resume ?? "(new session)",
   });
 
@@ -281,6 +280,18 @@ async function runAgent(opts: {
         model,
         effort,
         maxTurns: config.agent.maxTurns,
+        // Project scope only. Omitting this loads every filesystem settings
+        // source, so a build inherited the host account's global MCP servers
+        // and skills -- around ninety tool schemas for Robinhood, Drive,
+        // Calendar and the rest, none of which a Discord bot will ever call.
+        // Tool descriptions live in the request *prefix*, so that cost was not
+        // paid once: it was paid on every turn of every build, at the front of
+        // the context where it is re-read the most. See docs/usage.md.
+        //
+        // 'project' rather than [] so a CLAUDE.md in this repo still reaches
+        // the agent. The repo has none today, making this equivalent to [] --
+        // but it means adding one later is a file, not a code change.
+        settingSources: ["project"],
         // The agent must run unattended -- there is no human at a terminal to
         // answer a permission prompt. The human gate is the PR review instead.
         permissionMode: "bypassPermissions",
@@ -303,6 +314,10 @@ async function runAgent(opts: {
       },
     });
 
+    // Registered as soon as it exists so /stop can reach it, and cleared in
+    // the finally below whatever happens.
+    setRunning(q);
+
     for await (const message of q) {
       // session_id rides on most message types rather than one dedicated
       // event, so take it from whichever arrives first and keep it.
@@ -324,6 +339,22 @@ async function runAgent(opts: {
       } else if (message.type === "result") {
         costUsd = "total_cost_usd" in message ? (message.total_cost_usd as number) : null;
         if (message.subtype !== "success") {
+          // Hitting the turn ceiling is not the same kind of failure as an
+          // error, and reads as a mystery unless it says so: the work is
+          // half-done and the whole run is paid for.
+          const hitCeiling = /max_turns/i.test(message.subtype);
+          if (wasStopped()) {
+            return {
+              ok: false,
+              summary,
+              turns,
+              costUsd,
+              sessionId,
+              model,
+              effort: effort ?? null,
+              error: "STOPPED",
+            };
+          }
           return {
             ok: false,
             summary,
@@ -332,7 +363,11 @@ async function runAgent(opts: {
             sessionId,
             model,
             effort,
-            error: `Agent ended with: ${message.subtype}`,
+            error: hitCeiling
+              ? `Stopped at the ${config.agent.maxTurns}-turn ceiling with the work unfinished. ` +
+                `Either the request is too big for one build and wants splitting, or ` +
+                `AGENT_MAX_TURNS needs raising for this one.`
+              : `Agent ended with: ${message.subtype}`,
           };
         }
         if ("result" in message && typeof message.result === "string" && message.result.trim()) {
@@ -361,8 +396,11 @@ async function runAgent(opts: {
       sessionId,
       model,
       effort,
-      error: err instanceof Error ? err.message : String(err),
+      error: wasStopped() ? "STOPPED" : err instanceof Error ? err.message : String(err),
     };
+  } finally {
+    // Whatever happened, nothing is interruptible any more.
+    setRunning(null);
   }
 }
 

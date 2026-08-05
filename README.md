@@ -243,6 +243,26 @@ Feedback is treated as a genuine change request but does not outrank the
 agent's ground rules: asked to weaken the approval gate, it declines that part,
 does the rest, and says so.
 
+## Keeping token burn down
+
+`docs/usage.md` measures where a build's tokens actually go, across every
+feature this bot has shipped. The short version: cost is quadratic in turns,
+because each turn re-reads the whole accumulated context — so anything that
+adds turns, or adds tokens early, gets multiplied by every turn after it.
+
+What the code does about it:
+
+| | |
+|---|---|
+| `settingSources: ['project']` | Keeps the host account's global MCP tools and skills out of every request prefix |
+| Revision rounds are stamped and counted | The fourth round is the most expensive; it should not also be the least visible |
+| `AGENT_MAX_TURNS` defaults to 40 | A build that needs more is usually a request that should have been split |
+| `/stop` | Interrupts a run mid-flight — the single biggest lever, and the one interactive sessions have had all along |
+| `/active` | Opens Remote Control for builds while you're watching, so a run can be steered rather than restarted |
+
+`/stop` is safe by construction: nothing is pushed until the gates pass, so an
+interrupted run leaves the PR untouched and costs only what it had spent.
+
 ## Adding commands
 
 Drop a module in `src/commands/` exporting a `Command`, then register it in

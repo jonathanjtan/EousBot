@@ -202,6 +202,11 @@ export async function mergePullRequest(
   return { sha: data.sha };
 }
 
+/** Used to stamp revision rounds into a PR body, which is where they're counted from. */
+export async function updatePullRequestBody(number: number, body: string): Promise<void> {
+  await octokit.pulls.update({ ...repo, pull_number: number, body });
+}
+
 export async function closePullRequest(number: number, reason: string): Promise<void> {
   await octokit.issues.createComment({ ...repo, issue_number: number, body: reason });
   await octokit.pulls.update({ ...repo, pull_number: number, state: "closed" });

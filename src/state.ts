@@ -48,8 +48,6 @@ interface StateShape {
   usageReminders: string[];
   /** Last-seen reset timestamps, so a restart doesn't replay old rollovers. */
   resetMemory: ResetMemory;
-  /** Active mode: builds are steerable because someone is watching. */
-  activeMode: boolean;
 }
 
 const EMPTY: StateShape = {
@@ -57,7 +55,6 @@ const EMPTY: StateShape = {
   inFlight: null,
   usageReminders: [],
   resetMemory: {},
-  activeMode: false,
 };
 
 const statePath = join(config.runtime.repoPath, "state", "eousbot.json");
@@ -127,12 +124,4 @@ export function readResetMemory(): ResetMemory {
 
 export function saveResetMemory(resetMemory: ResetMemory): void {
   write({ ...read(), resetMemory });
-}
-
-export function readActiveMode(): boolean {
-  return read().activeMode;
-}
-
-export function saveActiveMode(activeMode: boolean): void {
-  write({ ...read(), activeMode });
 }

@@ -1,5 +1,4 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { effectiveVisibility } from "./active.js";
 import { config } from "./config.js";
 import { log } from "./log.js";
 import { looksLikeMissingSession } from "./naming.js";
@@ -76,18 +75,28 @@ export interface AgentRunResult {
 }
 
 /**
- * Controls how much of a build session is reachable from the Claude app.
+ * Session-visibility settings, kept only to express intent.
  *
- * Builds run unattended on a server, so by default there is no way to watch
- * one except through Discord. `view` mirrors the transcript to claude.ai
- * read-only; `remote` additionally opens the Remote Control bridge so you can
- * actually steer a run mid-flight.
+ * These do NOT make a build appear in the Claude app, and it is worth knowing
+ * why so nobody re-attempts it. `remoteControlAtStartup` is documented as
+ * auto-connect "for every interactive session", and each *interactive* process
+ * registers one remote session. A build is not an interactive session: the SDK
+ * drives `query()` headlessly, so it never registers one, and no setting passed
+ * here changes that. `autoUploadSessions` was measured not to surface SDK
+ * sessions either, and `daemonColdStart: 'transient'` spawns no daemon on a
+ * headless box -- both verified against a live build on 2026-08-05.
  *
- * Note that both send the session transcript -- which includes this
- * repository's code -- to claude.ai. `off` keeps everything on the box.
+ * The `Settings` type accepts all of them because it is the whole Claude Code
+ * settings schema; accepting a field is not the same as the headless path
+ * honouring it. Getting a session into the app needs a real interactive
+ * process (`claude remote-control`) or Channels, not a flag -- see
+ * docs/usage.md.
+ *
+ * Left in place because `off` still meaningfully means "send nothing", and a
+ * future SDK version may honour the rest.
  */
 function visibilitySettings(): Record<string, unknown> {
-  switch (effectiveVisibility()) {
+  switch (config.agent.sessionVisibility) {
     case "view":
       return { autoUploadSessions: true };
     case "remote":
@@ -267,7 +276,7 @@ async function runAgent(opts: {
     cwd: worktreePath,
     model,
     effort,
-    visibility: effectiveVisibility(),
+    visibility: config.agent.sessionVisibility,
     resume: opts.resume ?? "(new session)",
   });
 

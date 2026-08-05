@@ -266,10 +266,14 @@ What the code does about it:
 | Revision rounds are stamped and counted | The fourth round is the most expensive; it should not also be the least visible |
 | `AGENT_MAX_TURNS` defaults to 40 | A build that needs more is usually a request that should have been split |
 | `/stop` | Interrupts a run mid-flight — the single biggest lever, and the one interactive sessions have had all along |
-| `/active` | Opens Remote Control for builds while you're watching, so a run can be steered rather than restarted |
 
 `/stop` is safe by construction: nothing is pushed until the gates pass, so an
 interrupted run leaves the PR untouched and costs only what it had spent.
+
+Watching a build live from the Claude app is **not** possible — Remote Control
+attaches to interactive sessions, and an SDK-driven build is not one.
+`docs/usage.md` records what was measured and the two architectural routes that
+would work, so it doesn't get re-attempted.
 
 ## Adding commands
 

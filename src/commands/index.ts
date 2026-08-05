@@ -1,4 +1,3 @@
-import { command as active } from "./active.js";
 import { command as build } from "./build.js";
 import { command as eightball } from "./eightball.js";
 import { command as hoyohell } from "./hoyohell.js";
@@ -26,7 +25,6 @@ export const commands: Command[] = [
   status,
   build,
   stop,
-  active,
   revise,
   roll,
   eightball,

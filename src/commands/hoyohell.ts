@@ -1,15 +1,21 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import {
   DEFAULT_COUNT,
-  GAMES,
+  GAME_CHOICES,
   MAX_COUNT,
   eventFields,
   expiringSoonest,
+  feedsFor,
   fetchEvents,
   urgencyColour,
 } from "../hoyo.js";
 import { log } from "../log.js";
 import type { Command } from "./types.js";
+
+/** The game's full name, for the line under the title. */
+function fullName(label: string): string {
+  return GAME_CHOICES.find((game) => game.label === label)?.name ?? label;
+}
 
 /**
  * Lists the HoYoverse limited-time events closest to expiring, so the daily
@@ -27,16 +33,24 @@ export const command: Command = {
         .setMinValue(1)
         .setMaxValue(MAX_COUNT)
         .setRequired(false),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("game")
+        .setDescription("Only one game's events (default all three)")
+        .addChoices(...GAME_CHOICES.map(({ name, value }) => ({ name, value })))
+        .setRequired(false),
     ),
 
   async execute(interaction) {
     const count = interaction.options.getInteger("count") ?? DEFAULT_COUNT;
+    const feeds = feedsFor(interaction.options.getString("game"));
 
-    // Three round trips to HoYoverse, so the three seconds Discord allows for
-    // a reply are not enough.
+    // A round trip to HoYoverse per game, so the three seconds Discord allows
+    // for a reply are not enough.
     await interaction.deferReply();
 
-    const { events, failures } = await fetchEvents();
+    const { events, failures } = await fetchEvents(feeds);
     for (const failure of failures) {
       log.warn("Could not read HoYoverse announcements", {
         game: failure.game,
@@ -44,7 +58,7 @@ export const command: Command = {
       });
     }
 
-    if (failures.length === GAMES.length) {
+    if (failures.length === feeds.length) {
       await interaction.editReply("Couldn't reach any of the HoYoverse notice boards just now.");
       return;
     }
@@ -56,6 +70,7 @@ export const command: Command = {
       return;
     }
 
+    const listed = feeds.map((feed) => fullName(feed.label)).join(", ");
     const missing = failures.map((f) => f.game);
     const footer = [
       "Asia server times, from the in-game announcements",
@@ -67,9 +82,7 @@ export const command: Command = {
     const embed = new EmbedBuilder()
       .setColor(urgencyColour(soonest, now))
       .setTitle(`The ${soonest.length} events expiring soonest`)
-      .setDescription(
-        "Genshin Impact, Honkai: Star Rail and Zenless Zone Zero, least time left first.",
-      )
+      .setDescription(`${listed}, least time left first.`)
       .addFields(eventFields(soonest))
       .setFooter({ text: footer });
 

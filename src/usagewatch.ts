@@ -1,52 +1,87 @@
 import type { Client, TextChannel } from "discord.js";
-import { fetchUsage } from "./agent.js";
 import { config } from "./config.js";
 import { log } from "./log.js";
-import { diffResets, formatReminder } from "./reminders.js";
+import {
+  MISSED_RESET_GRACE_MS,
+  dueResets,
+  formatReminder,
+  nextResetAt,
+  rememberWindows,
+} from "./reminders.js";
 import { readResetMemory, saveResetMemory, usageReminderSubscribers } from "./state.js";
+import type { UsageWindow } from "./usage.js";
 
 /**
- * Watches the Claude usage windows and pings whoever asked to hear about a
- * reset. Subscriptions are managed by /remindme.
+ * Pings whoever asked to hear about a Claude usage reset. Subscriptions are
+ * managed by /remindme.
  *
- * Each check opens a Claude session (fetchUsage does), so the loop is idle
- * whenever nobody is subscribed and deliberately slow when somebody is: the
- * windows being watched are five hours and seven days wide.
+ * Nothing here polls. Every usage reading already carries the reset times, so
+ * fetchUsage hands its windows to noteUsageSnapshot, which memoizes them and
+ * arms one timer for the earliest reset worth announcing. Between readings the
+ * bot asks Claude nothing at all.
  */
 
-const POLL_INTERVAL_MS = 5 * 60_000;
+/** setTimeout stores its delay in a signed 32-bit int; anything longer wraps. */
+const MAX_TIMER_MS = 2_147_483_647;
 
-export function startUsageResetWatch(client: Client): void {
-  const timer = setInterval(() => {
-    void checkOnce(client);
-  }, POLL_INTERVAL_MS);
+let client: Client | null = null;
+let timer: NodeJS.Timeout | null = null;
+
+/** Called once the gateway is up, to honour reset times remembered before a restart. */
+export function startUsageResetWatch(ready: Client): void {
+  client = ready;
+  arm();
+}
+
+/** Records the reset times from a usage reading, wherever it came from. */
+export function noteUsageSnapshot(windows: UsageWindow[]): void {
+  saveResetMemory(rememberWindows(windows));
+  arm();
+}
+
+function arm(): void {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  if (!client) return;
+
+  const at = nextResetAt(readResetMemory());
+  if (at === null) return;
+
+  // Past-due resets are handled through the timer rather than inline: fire()
+  // calls arm() again, and going through the event loop keeps that from
+  // recursing when several windows are due at once.
+  const delay = Math.min(Math.max(0, at - Date.now()), MAX_TIMER_MS);
+  timer = setTimeout(() => {
+    void fire();
+  }, delay);
   // The bot restarts itself; a pending timer must not hold the process open.
   timer.unref();
 }
 
-async function checkOnce(client: Client): Promise<void> {
+async function fire(): Promise<void> {
+  timer = null;
+
+  const { events, remaining } = dueResets(
+    readResetMemory(),
+    Date.now(),
+    MISSED_RESET_GRACE_MS,
+  );
+  // Recorded before delivery: a Discord outage should cost one notification,
+  // not leave a due reset in memory to fire again on the next arming.
+  saveResetMemory(remaining);
+  // Re-armed for whatever is next before the send, which can be slow.
+  arm();
+
+  if (events.length === 0) return;
+
   const subscribers = usageReminderSubscribers();
   if (subscribers.length === 0) return;
-
-  let windows;
-  try {
-    windows = (await fetchUsage()).windows;
-  } catch (err) {
-    log.warn("Usage reset watch could not read usage", { err: String(err) });
-    return;
-  }
-
-  const { events, next } = diffResets(readResetMemory(), windows, Date.now());
-  // Recorded before delivery: a Discord outage should cost one notification,
-  // not leave the memory stale enough to re-fire on the next poll.
-  saveResetMemory(next);
-  if (events.length === 0) return;
 
   log.info("Usage windows reset", {
     windows: events.map((e) => e.label).join(", "),
     subscribers: subscribers.length,
   });
-  await announceReset(client, formatReminder(events, subscribers));
+  await announceReset(formatReminder(events, subscribers));
 }
 
 /**
@@ -54,9 +89,9 @@ async function checkOnce(client: Client): Promise<void> {
  * and a bot DM to a user who shares no other context with it is the kind of
  * thing Discord rate-limits hard.
  */
-async function announceReset(client: Client, text: string): Promise<void> {
+async function announceReset(text: string): Promise<void> {
   try {
-    const channel = await client.channels.fetch(config.discord.channelId);
+    const channel = await client?.channels.fetch(config.discord.channelId);
     if (channel?.isTextBased() && "send" in channel) {
       await (channel as TextChannel).send(text);
     }

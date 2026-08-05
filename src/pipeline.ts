@@ -1,10 +1,11 @@
-import { implementFeature } from "./agent.js";
+import { fetchUsage, implementFeature } from "./agent.js";
 import { describeAgentOptions } from "./agentopts.js";
 import * as gh from "./github.js";
 import { LABELS } from "./github.js";
 import { commitAll, createWorktree, diffStat, hasChanges, push, run } from "./git.js";
 import { branchNameFor } from "./naming.js";
 import { log } from "./log.js";
+import { usageReminderSubscribers } from "./state.js";
 import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
 
@@ -91,6 +92,16 @@ export async function buildFeature(
       agentOptions,
       onProgress: (note) => onProgress("Agent progress", note),
     });
+
+    // A build is by far the biggest thing this bot does to its usage limits,
+    // and fetchUsage memoizes the reset times it reads. Reading them once here
+    // is what keeps /remindme current without anything polling for it; nobody
+    // is waiting on the answer, so it runs alongside the rest of the build.
+    if (usageReminderSubscribers().length > 0) {
+      void fetchUsage().catch((err) =>
+        log.warn("Could not refresh usage after build", { err: String(err) }),
+      );
+    }
 
     if (!agentRun.ok) {
       await gh.setStatus(request.number, LABELS.failed);

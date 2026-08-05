@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import { log } from "./log.js";
 import { collectWindows } from "./usage.js";
+import { noteUsageSnapshot } from "./usagewatch.js";
 import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
@@ -273,11 +274,15 @@ export async function fetchUsage(): Promise<UsageSnapshot> {
       ),
     ]);
 
-    return {
+    const snapshot: UsageSnapshot = {
       subscriptionType: usage.subscription_type,
       rateLimitsAvailable: usage.rate_limits_available,
       windows: collectWindows(usage.rate_limits),
     };
+    // Every reading carries the reset times, so whoever asked for this one
+    // also refreshes what /remindme schedules against.
+    noteUsageSnapshot(snapshot.windows);
+    return snapshot;
   } finally {
     try {
       session.close();

@@ -1,9 +1,11 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import { log } from "./log.js";
-import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
+import { collectWindows } from "./usage.js";
+import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
+import type { UsageSnapshot } from "./usage.js";
 
 /**
  * Wraps the Claude Agent SDK to implement one feature request inside a
@@ -225,5 +227,62 @@ export async function implementFeature(opts: {
       effort: effort ?? null,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/** How long to wait for the SDK to answer the usage query before giving up. */
+const USAGE_TIMEOUT_MS = 20_000;
+
+/**
+ * Reads the Claude plan rate limits this bot's builds run against.
+ *
+ * The SDK exposes them only as a control request on a live session, so open
+ * one whose input stream never yields: streaming-input mode with nothing
+ * streamed starts the session, answers the request, and costs no tokens
+ * because no turn ever runs.
+ *
+ * The method name says it: this is an experimental SDK API and may move or
+ * disappear in a future release, which is why nothing but /usage depends on it.
+ */
+export async function fetchUsage(): Promise<UsageSnapshot> {
+  async function* noInput(): AsyncGenerator<SDKUserMessage> {
+    // Never yields and never returns; close() below tears the session down.
+    await new Promise<never>(() => {});
+  }
+
+  const session = query({
+    prompt: noInput(),
+    options: {
+      cwd: config.runtime.repoPath,
+      // Credentials are resolved exactly as a build would resolve them, so the
+      // limits reported are the ones a build would actually hit.
+      env: config.agent.apiKey
+        ? { ...process.env, ANTHROPIC_API_KEY: config.agent.apiKey }
+        : process.env,
+    },
+  });
+
+  try {
+    const usage = await Promise.race([
+      session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("timed out asking the SDK for usage")),
+          USAGE_TIMEOUT_MS,
+        ).unref(),
+      ),
+    ]);
+
+    return {
+      subscriptionType: usage.subscription_type,
+      rateLimitsAvailable: usage.rate_limits_available,
+      windows: collectWindows(usage.rate_limits),
+    };
+  } finally {
+    try {
+      session.close();
+    } catch (err) {
+      log.warn("Failed to close usage session", { err: String(err) });
+    }
   }
 }

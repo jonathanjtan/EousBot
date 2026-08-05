@@ -280,6 +280,10 @@ systemctl --user reset-failed eousbot.service
 systemctl --user start eousbot.service
 ```
 
+`/usage` reports the plan limits builds run against. Why a build through
+Discord costs more of them than the same change made in an interactive session
+is measured and explained in [docs/usage.md](docs/usage.md).
+
 ## Layout
 
 ```

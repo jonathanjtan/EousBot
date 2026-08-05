@@ -27,6 +27,14 @@ export const MODEL_CHOICES: { name: string; value: string }[] = [
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
+/**
+ * The effort a build runs at when neither /build nor AGENT_EFFORT picks one.
+ *
+ * Most feature requests here are small, and a higher level mostly buys longer
+ * runs and more spend. Ask for more per build when a request warrants it.
+ */
+export const DEFAULT_EFFORT: EffortLevel = "medium";
+
 export const EFFORT_CHOICES: { name: string; value: EffortLevel }[] = EFFORT_LEVELS.map(
   (level) => ({ name: level, value: level }),
 );

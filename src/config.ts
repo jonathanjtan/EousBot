@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { EFFORT_LEVELS } from "./agentopts.js";
+import { DEFAULT_EFFORT, EFFORT_LEVELS } from "./agentopts.js";
 
 /**
  * Environment is validated once, at boot, and never re-read.
@@ -57,9 +57,8 @@ const schema = z.object({
   AGENT_MODEL: z.string().default("claude-opus-5"),
   AGENT_MAX_TURNS: z.coerce.number().int().positive().default(60),
 
-  // Optional. Standing reasoning effort for builds; /build can override it per
-  // build. Unset leaves the Agent SDK's own default in place.
-  AGENT_EFFORT: z.enum(EFFORT_LEVELS).optional(),
+  // Standing reasoning effort for builds; /build can override it per build.
+  AGENT_EFFORT: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT),
 
   // How much of each build session is reachable from the Claude app.
   //   off    - nothing leaves the box
@@ -151,7 +150,7 @@ export const config = {
     authMode: env.ANTHROPIC_API_KEY ? ("apiKey" as const) : ("hostAuth" as const),
     apiKey: env.ANTHROPIC_API_KEY ?? null,
     model: env.AGENT_MODEL,
-    effort: env.AGENT_EFFORT ?? null,
+    effort: env.AGENT_EFFORT,
     maxTurns: env.AGENT_MAX_TURNS,
     sessionVisibility: env.AGENT_SESSION_VISIBILITY,
   },

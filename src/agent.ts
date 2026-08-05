@@ -256,7 +256,7 @@ async function runAgent(opts: {
   const request = { number: opts.issueNumber };
 
   const model = agentOptions?.model ?? config.agent.model;
-  const effort = agentOptions?.effort ?? config.agent.effort ?? undefined;
+  const effort = agentOptions?.effort ?? config.agent.effort;
 
   let summary = "";
   let turns = 0;
@@ -267,7 +267,7 @@ async function runAgent(opts: {
     issue: request.number,
     cwd: worktreePath,
     model,
-    effort: effort ?? "sdk default",
+    effort,
     visibility: config.agent.sessionVisibility,
     resume: opts.resume ?? "(new session)",
   });
@@ -279,8 +279,6 @@ async function runAgent(opts: {
         cwd: worktreePath,
         ...(opts.resume ? { resume: opts.resume } : {}),
         model,
-        // Left off entirely when nothing selected one, so the SDK's own
-        // per-model default stands rather than a value invented here.
         effort,
         maxTurns: config.agent.maxTurns,
         // The agent must run unattended -- there is no human at a terminal to
@@ -333,7 +331,7 @@ async function runAgent(opts: {
             costUsd,
             sessionId,
             model,
-            effort: effort ?? null,
+            effort,
             error: `Agent ended with: ${message.subtype}`,
           };
         }
@@ -351,7 +349,7 @@ async function runAgent(opts: {
       costUsd,
       sessionId,
       model,
-      effort: effort ?? null,
+      effort,
     };
   } catch (err) {
     log.error("Agent threw", { issue: request.number, err: String(err) });
@@ -362,7 +360,7 @@ async function runAgent(opts: {
       costUsd,
       sessionId,
       model,
-      effort: effort ?? null,
+      effort,
       error: err instanceof Error ? err.message : String(err),
     };
   }

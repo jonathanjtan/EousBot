@@ -13,7 +13,9 @@ const { branchNameFor } = await import("../src/naming.ts");
 const { encodeCustomId, decodeCustomId } = await import("../src/approval.ts");
 const {
   CHOICE_LIMITS,
+  DEFAULT_EFFORT,
   EFFORT_CHOICES,
+  EFFORT_LEVELS,
   MODEL_CHOICES,
   describeAgentOptions,
   parseEffort,
@@ -61,6 +63,11 @@ test("parseModel and parseEffort accept only the offered choices", () => {
   for (const bad of [null, "", "ultra", "HIGH", "10"]) {
     assert.equal(parseEffort(bad), undefined, `should reject ${JSON.stringify(bad)}`);
   }
+});
+
+test("the default effort is one of the offered levels", () => {
+  assert.equal(DEFAULT_EFFORT, "medium");
+  assert.ok(EFFORT_LEVELS.includes(DEFAULT_EFFORT));
 });
 
 test("choice lists stay inside Discord's limits", () => {

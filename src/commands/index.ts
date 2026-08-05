@@ -1,5 +1,6 @@
 import { command as build } from "./build.js";
 import { command as eightball } from "./eightball.js";
+import { command as hoyohell } from "./hoyohell.js";
 import { command as lenny } from "./lenny.js";
 import { command as ping } from "./ping.js";
 import { command as remindme } from "./remindme.js";
@@ -28,6 +29,7 @@ export const commands: Command[] = [
   usage,
   remindme,
   lenny,
+  hoyohell,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

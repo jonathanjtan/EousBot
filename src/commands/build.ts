@@ -1,8 +1,15 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
+import {
+  EFFORT_CHOICES,
+  MODEL_CHOICES,
+  parseEffort,
+  parseModel,
+} from "../agentopts.js";
 import { buildApprovalMessage } from "../approval.js";
 import { getFeatureRequest } from "../github.js";
 import { log } from "../log.js";
 import { buildFeature } from "../pipeline.js";
+import type { AgentOptions } from "../agentopts.js";
 import type { Command } from "./types.js";
 
 /**
@@ -24,10 +31,28 @@ export const command: Command = {
         .setName("id")
         .setDescription("The feature request number, from /status")
         .setRequired(true),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("model")
+        .setDescription("Model that writes the code (default: the bot's configured model)")
+        .addChoices(...MODEL_CHOICES),
+    )
+    .addStringOption((o) =>
+      o
+        .setName("effort")
+        .setDescription("How hard it thinks (default: the bot's configured level)")
+        .addChoices(...EFFORT_CHOICES),
     ),
 
   async execute(interaction) {
     const issueNumber = interaction.options.getInteger("id", true);
+    // Discord already rejects anything outside the choice lists; parsing again
+    // keeps the types honest and survives a stale command schema.
+    const agentOptions: AgentOptions = {
+      model: parseModel(interaction.options.getString("model")),
+      effort: parseEffort(interaction.options.getString("effort")),
+    };
 
     if (inFlight) {
       await interaction.reply({
@@ -49,6 +74,12 @@ export const command: Command = {
     inFlight = { issueNumber, startedBy: interaction.user.username };
     await interaction.deferReply();
 
+    // Overrides are worth showing while it runs: they change what the build
+    // costs and how long it takes, and the requester picked them a screen ago.
+    const overrides = [agentOptions.model, agentOptions.effort].filter(Boolean).join(", ");
+    const header =
+      `**Building #${issueNumber}** — ${request.title}` + (overrides ? ` (${overrides})` : "");
+
     // Progress arrives faster than Discord's edit rate limit tolerates, so
     // coalesce: keep the latest stage and flush on a timer.
     let latest = "Starting…";
@@ -56,16 +87,18 @@ export const command: Command = {
     const flush = setInterval(() => {
       if (!dirty) return;
       dirty = false;
-      interaction
-        .editReply(`**Building #${issueNumber}** — ${request.title}\n\`${latest}\``)
-        .catch(() => undefined);
+      interaction.editReply(`${header}\n\`${latest}\``).catch(() => undefined);
     }, 4000);
 
     try {
-      const outcome = await buildFeature(request, (stage, detail) => {
-        latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
-        dirty = true;
-      });
+      const outcome = await buildFeature(
+        request,
+        (stage, detail) => {
+          latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
+          dirty = true;
+        },
+        agentOptions,
+      );
 
       clearInterval(flush);
 

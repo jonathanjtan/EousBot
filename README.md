@@ -164,8 +164,12 @@ else:
 
 ## Iterating on a pull request
 
-**Request changes** opens a modal for feedback, then puts the agent back on the
-same branch with it. The revision passes the same `tsc` and test gates as the
+**Request changes** on the approval embed — or `/revise <pr>` for any open PR —
+opens a modal for feedback, then puts the agent back on the same branch with it.
+
+The command exists because a button only lives on the message that carried it:
+embeds scroll away, channels get purged, and a PR opened before the button
+shipped never had one. `/revise` reaches any open PR regardless. The revision passes the same `tsc` and test gates as the
 original, pushes to the existing branch so the PR updates in place, and posts a
 fresh approval prompt. Repeat as often as you like.
 

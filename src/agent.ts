@@ -1,6 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentOptions } from "./agentopts.js";
 import type { FeatureRequest } from "./github.js";
 
 /**
@@ -61,6 +63,9 @@ export interface AgentRunResult {
   costUsd: number | null;
   /** Claude Code session ID, so a run can be found in the app afterwards. */
   sessionId: string | null;
+  /** What the run actually used, after per-build overrides and config defaults. */
+  model: string;
+  effort: EffortLevel | null;
   error?: string;
 }
 
@@ -106,9 +111,14 @@ function buildPrompt(request: FeatureRequest): string {
 export async function implementFeature(opts: {
   request: FeatureRequest;
   worktreePath: string;
+  /** Per-build overrides from /build; anything absent falls back to config. */
+  agentOptions?: AgentOptions;
   onProgress?: (note: string) => void;
 }): Promise<AgentRunResult> {
-  const { request, worktreePath, onProgress } = opts;
+  const { request, worktreePath, agentOptions, onProgress } = opts;
+
+  const model = agentOptions?.model ?? config.agent.model;
+  const effort = agentOptions?.effort ?? config.agent.effort ?? undefined;
 
   let summary = "";
   let turns = 0;
@@ -118,6 +128,8 @@ export async function implementFeature(opts: {
   log.info("Agent starting", {
     issue: request.number,
     cwd: worktreePath,
+    model,
+    effort: effort ?? "sdk default",
     visibility: config.agent.sessionVisibility,
   });
 
@@ -126,7 +138,10 @@ export async function implementFeature(opts: {
       prompt: buildPrompt(request),
       options: {
         cwd: worktreePath,
-        model: config.agent.model,
+        model,
+        // Left off entirely when nothing selected one, so the SDK's own
+        // per-model default stands rather than a value invented here.
+        effort,
         maxTurns: config.agent.maxTurns,
         // The agent must run unattended -- there is no human at a terminal to
         // answer a permission prompt. The human gate is the PR review instead.
@@ -177,6 +192,8 @@ export async function implementFeature(opts: {
             turns,
             costUsd,
             sessionId,
+            model,
+            effort: effort ?? null,
             error: `Agent ended with: ${message.subtype}`,
           };
         }
@@ -187,7 +204,15 @@ export async function implementFeature(opts: {
     }
 
     log.info("Agent finished", { issue: request.number, turns, costUsd });
-    return { ok: true, summary: summary.trim(), turns, costUsd, sessionId };
+    return {
+      ok: true,
+      summary: summary.trim(),
+      turns,
+      costUsd,
+      sessionId,
+      model,
+      effort: effort ?? null,
+    };
   } catch (err) {
     log.error("Agent threw", { issue: request.number, err: String(err) });
     return {
@@ -196,6 +221,8 @@ export async function implementFeature(opts: {
       turns,
       costUsd,
       sessionId,
+      model,
+      effort: effort ?? null,
       error: err instanceof Error ? err.message : String(err),
     };
   }

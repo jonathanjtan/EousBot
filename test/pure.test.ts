@@ -11,6 +11,14 @@ import { test } from "node:test";
 
 const { branchNameFor } = await import("../src/naming.ts");
 const { encodeCustomId, decodeCustomId } = await import("../src/approval.ts");
+const {
+  CHOICE_LIMITS,
+  EFFORT_CHOICES,
+  MODEL_CHOICES,
+  describeAgentOptions,
+  parseEffort,
+  parseModel,
+} = await import("../src/agentopts.ts");
 
 test("branchNameFor slugifies and anchors on the issue number", () => {
   assert.equal(branchNameFor(12, "Add a /roll command"), "eous/12-add-a-roll-command");
@@ -39,6 +47,40 @@ test("approval custom IDs round-trip", () => {
       assert.deepEqual(decodeCustomId(encoded), { action, prNumber: 9, issueNumber });
     }
   }
+});
+
+test("parseModel and parseEffort accept only the offered choices", () => {
+  assert.equal(parseModel("claude-opus-5"), "claude-opus-5");
+  assert.equal(parseEffort("xhigh"), "xhigh");
+
+  // Discord enforces the same lists, so a rejection here means a stale command
+  // schema or a hand-crafted interaction -- fall back to the configured default.
+  for (const bad of [null, "", "opus 5", "gpt-4", "claude-opus-5 "]) {
+    assert.equal(parseModel(bad), undefined, `should reject ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [null, "", "ultra", "HIGH", "10"]) {
+    assert.equal(parseEffort(bad), undefined, `should reject ${JSON.stringify(bad)}`);
+  }
+});
+
+test("choice lists stay inside Discord's limits", () => {
+  for (const choices of [MODEL_CHOICES, EFFORT_CHOICES]) {
+    assert.ok(choices.length > 0 && choices.length <= CHOICE_LIMITS.count);
+    assert.equal(
+      new Set(choices.map((c) => c.value)).size,
+      choices.length,
+      "choice values must be unique",
+    );
+    for (const { name, value } of choices) {
+      assert.ok(name.length > 0 && name.length <= CHOICE_LIMITS.nameLength, name);
+      assert.ok(value.length > 0 && value.length <= CHOICE_LIMITS.valueLength, value);
+    }
+  }
+});
+
+test("describeAgentOptions omits effort when none was resolved", () => {
+  assert.equal(describeAgentOptions("claude-opus-5", "max"), "claude-opus-5, max effort");
+  assert.equal(describeAgentOptions("claude-opus-5", null), "claude-opus-5");
 });
 
 test("decodeCustomId rejects anything it did not mint", () => {

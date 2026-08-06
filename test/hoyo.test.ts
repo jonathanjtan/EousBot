@@ -307,7 +307,9 @@ test("parseAnnouncements leaves the counts null when no bodies were read", () =>
 });
 
 test("expiringSoonest keeps only what is running, soonest expiry first", () => {
-  const events = expiringSoonest(parseAnnouncements(FILED, PAYLOAD), NOW, DEFAULT_COUNT);
+  // The gem filter is off throughout this one: what's under test is the rest
+  // of the chain, and the fixture's events carry no counts of their own.
+  const events = expiringSoonest(parseAnnouncements(FILED, PAYLOAD), NOW, DEFAULT_COUNT, false);
 
   // 2 and 12 are housekeeping, 3 is an evergreen notice, 6 is a warp banner, 7
   // hasn't opened and 8 is over.
@@ -323,9 +325,13 @@ test("expiringSoonest keeps only what is running, soonest expiry first", () => {
 
 test("expiringSoonest honours the requested count", () => {
   const events = parseAnnouncements(FILED, PAYLOAD);
-  assert.equal(expiringSoonest(events, NOW, 1).length, 1);
-  assert.equal(expiringSoonest(events, NOW, 1)[0]?.id, 1, "kept the wrong one");
-  assert.equal(expiringSoonest(events, NOW, 50).length, 2, "invented events to fill the count");
+  assert.equal(expiringSoonest(events, NOW, 1, false).length, 1);
+  assert.equal(expiringSoonest(events, NOW, 1, false)[0]?.id, 1, "kept the wrong one");
+  assert.equal(
+    expiringSoonest(events, NOW, 50, false).length,
+    2,
+    "invented events to fill the count",
+  );
 });
 
 test("expiringSoonest drops the TCG, banner and Miliastra entries", () => {
@@ -349,11 +355,50 @@ test("expiringSoonest drops the TCG, banner and Miliastra entries", () => {
     ],
     NOW,
     DEFAULT_COUNT,
+    false,
   );
 
   assert.deepEqual(
     events.map((e) => e.id),
     [5],
+  );
+});
+
+test("expiringSoonest lists only what states a gem count, unless told otherwise", () => {
+  const events = parseAnnouncements(FILED, PAYLOAD, parseRewards(FILED, CONTENT));
+
+  // 1 and 5 are the two that survive the rest of the chain, and both carry a
+  // count -- so the fixture is made to disagree to prove the filter bites.
+  const stripped = events.map((e) => (e.id === 5 ? { ...e, gems: null } : e));
+
+  assert.deepEqual(
+    expiringSoonest(stripped, NOW, DEFAULT_COUNT).map((e) => e.id),
+    [1],
+    "kept an event whose announcement named no figure",
+  );
+  assert.deepEqual(
+    expiringSoonest(stripped, NOW, DEFAULT_COUNT, false).map((e) => e.id),
+    [1, 5],
+    "dropped the unpriced event even with the filter off",
+  );
+});
+
+test("expiringSoonest filters on the gem count before it takes the count asked for", () => {
+  const running = (id, gems) => ({
+    game: "Genshin",
+    id,
+    title: `Event ${id}`,
+    startsAt: NOW - HOUR,
+    endsAt: NOW + id * HOUR,
+    gems,
+  });
+  // The three unpriced events sort ahead of the priced one, and must not eat
+  // the single slot that was asked for.
+  const events = [running(1, null), running(2, null), running(3, null), running(4, 60)];
+
+  assert.deepEqual(
+    expiringSoonest(events, NOW, 1).map((e) => e.id),
+    [4],
   );
 });
 

@@ -418,13 +418,27 @@ const HOUSEKEEPING = [
  */
 const UNWANTED = [/\btcg\b/i, /event wish/i, /event warp/i, /signal search/i, /miliastra/i];
 
-/** The events running right now, soonest to expire first. */
-export function expiringSoonest(events: HoyoEvent[], now: number, limit: number): HoyoEvent[] {
+/**
+ * The events running right now, soonest to expire first.
+ *
+ * `rewardedOnly` keeps just the ones whose announcement states a gem figure,
+ * which is what most people want out of the list and so is the default. It is
+ * a blunt cut: an announcement that promises "Primogems and other rewards"
+ * without printing a number is dropped alongside the ones that genuinely pay
+ * nothing, and on a normal day that is most of the list. Hence the flag.
+ */
+export function expiringSoonest(
+  events: HoyoEvent[],
+  now: number,
+  limit: number,
+  rewardedOnly = true,
+): HoyoEvent[] {
   return events
     .filter((event) => event.startsAt <= now && event.endsAt > now)
     .filter((event) => event.endsAt - event.startsAt <= EVERGREEN_MS)
     .filter((event) => !HOUSEKEEPING.some((pattern) => pattern.test(event.title)))
     .filter((event) => !UNWANTED.some((pattern) => pattern.test(event.title)))
+    .filter((event) => !rewardedOnly || event.gems !== null)
     .sort((a, b) => a.endsAt - b.endsAt || a.title.localeCompare(b.title))
     .slice(0, limit);
 }

@@ -214,6 +214,32 @@ test("expiringSoonest honours the requested count", () => {
   assert.equal(expiringSoonest(events, NOW, 50).length, 3, "invented events to fill the count");
 });
 
+test("expiringSoonest drops the TCG, wish and Miliastra entries", () => {
+  const running = (id, title) => ({
+    game: "Genshin",
+    id,
+    title,
+    startsAt: NOW - HOUR,
+    endsAt: NOW + HOUR,
+  });
+  const events = expiringSoonest(
+    [
+      running(1, "Genius Invokation TCG: Duel! Wits and Cards"),
+      running(2, 'Event Wish "Farewell of Snezhnaya" - Boosted Drop Rate!'),
+      running(3, "Miliastra Wonderland: Creator Season"),
+      running(4, "TCG Card Shop Update"),
+      running(5, "Ley Line Overflow"),
+    ],
+    NOW,
+    DEFAULT_COUNT,
+  );
+
+  assert.deepEqual(
+    events.map((e) => e.id),
+    [5],
+  );
+});
+
 test("eventFields renders the game, the title and a Discord countdown", () => {
   const [field] = eventFields([
     { game: "ZZZ", id: 1, title: "Gift From the Clouds", startsAt: NOW, endsAt: NOW + HOUR },

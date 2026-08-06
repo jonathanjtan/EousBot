@@ -238,7 +238,7 @@ export async function reviseFeature(opts: {
 export async function implementFeature(opts: {
   request: FeatureRequest;
   worktreePath: string;
-  /** Per-build overrides from /build; anything absent falls back to config. */
+  /** Per-build overrides from /claude; anything absent falls back to config. */
   agentOptions?: AgentOptions;
   onProgress?: (note: string) => void;
 }): Promise<AgentRunResult> {

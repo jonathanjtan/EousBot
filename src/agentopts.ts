@@ -1,7 +1,7 @@
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 
 /**
- * The models and effort levels /build offers, and the parsers that guard them.
+ * The models and effort levels /claude offers, and the parsers that guard them.
  *
  * Discord validates a choice server-side, so a value that reaches the agent is
  * always one listed here -- a mistyped model ID can't waste a build. The cost
@@ -28,7 +28,7 @@ export const MODEL_CHOICES: { name: string; value: string }[] = [
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /**
- * The effort a build runs at when neither /build nor AGENT_EFFORT picks one.
+ * The effort a build runs at when neither /claude nor AGENT_EFFORT picks one.
  *
  * Most feature requests here are small, and a higher level mostly buys longer
  * runs and more spend. Ask for more per build when a request warrants it.

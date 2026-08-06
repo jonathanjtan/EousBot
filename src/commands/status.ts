@@ -74,7 +74,7 @@ export const command: Command = {
         .setColor(0x1d76db)
         .setTitle(`Feature requests (${requests.length})`)
         .setDescription(lines.join("\n"))
-        .setFooter({ text: "/status <id> for detail · /build <id> to start one" });
+        .setFooter({ text: "/status <id> for detail · /claude <id> to start one" });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {

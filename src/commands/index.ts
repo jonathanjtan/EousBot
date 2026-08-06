@@ -1,4 +1,4 @@
-import { command as build } from "./build.js";
+import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
 import { command as hoyohell } from "./hoyohell.js";
 import { command as lenny } from "./lenny.js";
@@ -23,7 +23,7 @@ export const commands: Command[] = [
   ping,
   request,
   status,
-  build,
+  claude,
   stop,
   revise,
   roll,

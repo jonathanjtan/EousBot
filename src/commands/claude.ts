@@ -19,7 +19,7 @@ import type { Command } from "./types.js";
 export const command: Command = {
   adminOnly: true,
   data: new SlashCommandBuilder()
-    .setName("build")
+    .setName("claude")
     .setDescription("Have the bot write code for a feature request (admin only)")
     .addIntegerOption((o) =>
       o

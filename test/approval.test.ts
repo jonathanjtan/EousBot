@@ -7,7 +7,9 @@ import { test } from "node:test";
  * returns null turns a button into a no-op with no error anywhere.
  */
 
-const { encodeCustomId, decodeCustomId } = await import("../src/approval.ts");
+const { encodeCustomId, decodeCustomId, closeApprovalButtons } = await import(
+  "../src/approval.ts"
+);
 const { sessionIdFromPrBody } = await import("../src/naming.ts");
 
 test("every approval action round-trips through the custom ID", () => {
@@ -23,6 +25,35 @@ test("every approval action round-trips through the custom ID", () => {
 test("unknown actions are rejected rather than defaulting to something", () => {
   assert.equal(decodeCustomId("eous:deploy:1:2"), null);
   assert.equal(decodeCustomId("eous:approve:x:2"), null);
+});
+
+test("requesting changes strips the buttons off the approval prompt", async () => {
+  const edits: unknown[] = [];
+  await closeApprovalButtons(
+    {
+      edit: async (options) => {
+        edits.push(options);
+        return undefined;
+      },
+    },
+    "dragaan",
+  );
+
+  assert.deepEqual(edits, [{ content: "Changes requested by dragaan.", components: [] }]);
+});
+
+test("a missing prompt, or one that will not edit, does not fail the revision", async () => {
+  // /revise has no message behind it, and a purged channel has one that
+  // rejects. Neither is a reason to abandon the revision.
+  await closeApprovalButtons(null, "dragaan");
+  await closeApprovalButtons(
+    {
+      edit: async () => {
+        throw new Error("Unknown Message");
+      },
+    },
+    "dragaan",
+  );
 });
 
 test("session id is recoverable from a PR body", () => {

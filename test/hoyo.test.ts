@@ -6,22 +6,24 @@ import { test } from "node:test";
  *
  * Imported directly rather than through the command module so the suite
  * doesn't pull in src/config.ts, which exits the process on missing
- * environment variables. Nothing here touches the network: the fixture below
- * reproduces the shapes the three games actually return, including the
+ * environment variables. Nothing here touches the network: the fixtures below
+ * reproduce the shapes the three games actually return, including the
  * doubly-nested picture carousel Star Rail and Zenless hide half their events
- * in, and the HTML Zenless wraps its titles in.
+ * in, the HTML Zenless wraps its titles in, and the wording the announcement
+ * bodies state their gem rewards in.
  */
 
 const {
   DEFAULT_COUNT,
   GAME_CHOICES,
   GAMES,
-  cleanTitle,
   eventFields,
   expiringSoonest,
   feedsFor,
   parseAnnouncements,
+  parseRewards,
   parseServerTime,
+  plainText,
   urgencyColour,
 } = await import("../src/hoyo.ts");
 
@@ -29,8 +31,20 @@ const NOW = Date.parse("2026-08-05T00:00:00Z");
 const HOUR = 3_600_000;
 
 /** Stand-ins for the real feeds: one that files notices, one that doesn't. */
-const PLAIN = { label: "Star Rail", url: "https://example.invalid/list", notices: [] };
-const FILED = { label: "Genshin", url: "https://example.invalid/list", notices: ["Game", "社群公告"] };
+const PLAIN = {
+  label: "Star Rail",
+  url: "https://example.invalid/list",
+  contentUrl: "https://example.invalid/content",
+  currency: "Stellar Jade",
+  notices: [],
+};
+const FILED = {
+  label: "Genshin",
+  url: "https://example.invalid/list",
+  contentUrl: "https://example.invalid/content",
+  currency: "Primogems",
+  notices: ["Game", "社群公告"],
+};
 
 const PAYLOAD = {
   retcode: 0,
@@ -138,6 +152,66 @@ const PAYLOAD = {
   },
 };
 
+/**
+ * `getAnnContent` against the same IDs, with the wordings the live bodies use:
+ * the plain `×N`, the four-digit figure written with a comma, the rate quoted
+ * inside a larger compensation figure, the number written before the currency,
+ * and the majority case that promises rewards without ever naming a count. The
+ * escaped `&times;` is the one form not seen live -- the bodies do escape their
+ * other punctuation, so it is covered rather than assumed away.
+ */
+const CONTENT = {
+  retcode: 0,
+  data: {
+    list: [
+      {
+        ann_id: 1,
+        title: "Ley Line Overflow",
+        content:
+          '<p style="white-space: pre-wrap;">Complete the missions to obtain an additional' +
+          " reward of Primogems &times;400.</p>",
+      },
+      {
+        ann_id: 2,
+        title: "Game Version Optimization and Known Issues",
+        content:
+          "<p>Maintenance Compensation: Primogems ×300 (60 Primogems per hour the servers" +
+          " are down)</p><p>Issue Fix Compensation: Primogems ×30</p>",
+      },
+      {
+        ann_id: 5,
+        title: "Summer",
+        content: "<p>Log in to claim Primogems ×1,600 and an exclusive namecard!</p>",
+      },
+      {
+        ann_id: 11,
+        title: "Behind the Design | ZTALK",
+        content: "<p>You will receive 100 Primogems for watching.</p>",
+      },
+      {
+        ann_id: 12,
+        title: "Experience the Paths Vol. 6 Trailer OST Now Available",
+        content: "<p>Listen now to obtain Primogems, Mora, and other rewards.</p>",
+      },
+    ],
+    pic_list: [
+      {
+        type_list: [
+          {
+            list: [
+              {
+                ann_id: 6,
+                title: "Version 4.4 Event Warp: Phase II",
+                content: "<p>Warp to obtain Stellar Jade ×80.</p>",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+};
+
 test("parseServerTime reads wall-clock server time against the stated offset", () => {
   assert.equal(
     parseServerTime("2026-08-10 03:59:59", 8),
@@ -153,15 +227,15 @@ test("parseServerTime rejects anything that isn't a timestamp", () => {
   }
 });
 
-test("cleanTitle unwraps the HTML Zenless sends and decodes its entities", () => {
+test("plainText unwraps the HTML Zenless sends and decodes its entities", () => {
   assert.equal(
-    cleanTitle('<p style="white-space: pre-wrap;">Summer &amp; Waves Roll In</p>'),
+    plainText('<p style="white-space: pre-wrap;">Summer &amp; Waves Roll In</p>'),
     "Summer & Waves Roll In",
   );
-  assert.equal(cleanTitle("&quot;Gift&#39;s&quot;&nbsp;Details"), "\"Gift's\" Details");
-  assert.equal(cleanTitle("  spaced   out  "), "spaced out");
+  assert.equal(plainText("&quot;Gift&#39;s&quot;&nbsp;Details"), "\"Gift's\" Details");
+  assert.equal(plainText("  spaced   out  "), "spaced out");
   // An entity the table doesn't know is left as it came rather than mangled.
-  assert.equal(cleanTitle("Tea &hellip; Party"), "Tea &hellip; Party");
+  assert.equal(plainText("Tea &hellip; Party"), "Tea &hellip; Party");
 });
 
 test("parseAnnouncements reaches the events nested in the picture carousel", () => {
@@ -190,6 +264,46 @@ test("parseAnnouncements skips the sections a feed files its notices under", () 
   assert.ok(!ids.includes(10), "kept an entry from a notice section");
   assert.ok(!ids.includes(11), "kept an entry carrying a notice tag");
   assert.ok(ids.includes(1), "threw out the events along with the notices");
+});
+
+test("parseRewards reads the figure each body states, in every wording", () => {
+  const rewards = parseRewards(FILED, CONTENT);
+
+  assert.equal(rewards.get(1), 400, "missed the entity-escaped multiplication sign");
+  assert.equal(rewards.get(5), 1600, "tripped over the thousands comma");
+  assert.equal(rewards.get(11), 100, "missed the figure written before the currency");
+});
+
+test("parseRewards takes the largest figure a body states, never their sum", () => {
+  // 300 for the maintenance, of which the 60 an hour is a part, and 30 for the
+  // fix: adding them up would advertise 390 gems that nobody is getting.
+  assert.equal(parseRewards(FILED, CONTENT).get(2), 300);
+});
+
+test("parseRewards passes over bodies that name no figure, and other currencies", () => {
+  const rewards = parseRewards(FILED, CONTENT);
+
+  assert.ok(!rewards.has(12), "invented a count for a body that promised no number");
+  assert.ok(!rewards.has(6), "read another game's currency as Primogems");
+  // The nested body is found when it is the feed's own currency being asked for.
+  assert.equal(parseRewards(PLAIN, CONTENT).get(6), 80, "missed the body in the carousel");
+});
+
+test("parseAnnouncements hangs the gem counts off the events by announcement id", () => {
+  const events = parseAnnouncements(FILED, PAYLOAD, parseRewards(FILED, CONTENT));
+  const gems = new Map(events.map((e) => [e.id, e.gems]));
+
+  assert.equal(gems.get(1), 400);
+  assert.equal(gems.get(5), 1600, "lost the count when the duplicate copy won the title");
+  assert.equal(gems.get(7), null, "claimed a count for an announcement with no body");
+});
+
+test("parseAnnouncements leaves the counts null when no bodies were read", () => {
+  const events = parseAnnouncements(FILED, PAYLOAD);
+  assert.ok(
+    events.every((e) => e.gems === null),
+    "conjured gem counts out of the list alone",
+  );
 });
 
 test("expiringSoonest keeps only what is running, soonest expiry first", () => {
@@ -221,6 +335,7 @@ test("expiringSoonest drops the TCG, banner and Miliastra entries", () => {
     title,
     startsAt: NOW - HOUR,
     endsAt: NOW + HOUR,
+    gems: null,
   });
   const events = expiringSoonest(
     [
@@ -244,7 +359,14 @@ test("expiringSoonest drops the TCG, banner and Miliastra entries", () => {
 
 test("eventFields renders the game, the title and a Discord countdown", () => {
   const [field] = eventFields([
-    { game: "ZZZ", id: 1, title: "Gift From the Clouds", startsAt: NOW, endsAt: NOW + HOUR },
+    {
+      game: "ZZZ",
+      id: 1,
+      title: "Gift From the Clouds",
+      startsAt: NOW,
+      endsAt: NOW + HOUR,
+      gems: null,
+    },
   ]);
 
   assert.equal(field?.name, "ZZZ · Gift From the Clouds");
@@ -252,9 +374,33 @@ test("eventFields renders the game, the title and a Discord countdown", () => {
   assert.equal(field?.value, `Ends <t:${seconds}:R> — <t:${seconds}:f>`);
 });
 
+test("eventFields names the gems in each game's own currency, when there are any", () => {
+  const at = (game, gems) => ({
+    game,
+    id: 1,
+    title: "x",
+    startsAt: NOW,
+    endsAt: NOW + HOUR,
+    gems,
+  });
+  const value = (event) => eventFields([event])[0]?.value.split("\n")[1];
+
+  assert.equal(value(at("Genshin", 400)), "Primogems ×400");
+  assert.equal(value(at("Star Rail", 300)), "Stellar Jade ×300");
+  assert.equal(value(at("ZZZ", 1600)), "Polychrome ×1,600", "dropped the thousands separator");
+  assert.equal(value(at("Genshin", null)), undefined, "wrote a line for a count it doesn't have");
+});
+
 test("eventFields keeps field names inside the embed limit", () => {
   const [field] = eventFields([
-    { game: "Genshin", id: 1, title: "e".repeat(500), startsAt: NOW, endsAt: NOW + HOUR },
+    {
+      game: "Genshin",
+      id: 1,
+      title: "e".repeat(500),
+      startsAt: NOW,
+      endsAt: NOW + HOUR,
+      gems: null,
+    },
   ]);
 
   assert.ok((field?.name.length ?? 0) <= 256, "would be rejected by Discord");
@@ -263,7 +409,7 @@ test("eventFields keeps field names inside the embed limit", () => {
 
 test("urgencyColour escalates as the soonest expiry closes in", () => {
   const at = (endsAt: number) => [
-    { game: "Genshin", id: 1, title: "x", startsAt: NOW - HOUR, endsAt },
+    { game: "Genshin", id: 1, title: "x", startsAt: NOW - HOUR, endsAt, gems: null },
   ];
 
   assert.equal(urgencyColour(at(NOW + 2 * HOUR), NOW), 0xd7263d);
@@ -282,6 +428,18 @@ test("every game is asked for the English list of its own announcements", () => 
     assert.ok(url.pathname.endsWith("/announcement/api/getAnnList"), url.pathname);
   }
   assert.equal(new Set(GAMES.map((g) => g.url)).size, 3, "two games share a feed");
+});
+
+test("every game asks the same host for the bodies its gem counts come from", () => {
+  for (const game of GAMES) {
+    const list = new URL(game.url);
+    const content = new URL(game.contentUrl);
+    assert.ok(content.pathname.endsWith("/announcement/api/getAnnContent"), content.pathname);
+    assert.equal(content.host, list.host, `${game.label} reads its bodies off another host`);
+    assert.equal(content.search, list.search, `${game.label} asks the two endpoints differently`);
+    assert.ok(game.currency.length > 0, `${game.label} has no currency to report`);
+  }
+  assert.equal(new Set(GAMES.map((g) => g.currency)).size, 3, "two games share a currency");
 });
 
 test("the game option narrows the feeds to one, and anything else asks all three", () => {

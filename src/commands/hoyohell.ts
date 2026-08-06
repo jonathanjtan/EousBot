@@ -50,9 +50,15 @@ export const command: Command = {
     // for a reply are not enough.
     await interaction.deferReply();
 
-    const { events, failures } = await fetchEvents(feeds);
+    const { events, failures, rewardFailures } = await fetchEvents(feeds);
     for (const failure of failures) {
       log.warn("Could not read HoYoverse announcements", {
+        game: failure.game,
+        err: failure.error,
+      });
+    }
+    for (const failure of rewardFailures) {
+      log.warn("Could not read HoYoverse announcement bodies; listing without gem counts", {
         game: failure.game,
         err: failure.error,
       });
@@ -74,6 +80,11 @@ export const command: Command = {
     const missing = failures.map((f) => f.game);
     const footer = [
       "Asia server times, from the in-game announcements",
+      // Said only when a count is on show, so nobody reads its absence as a
+      // claim that the event pays nothing.
+      soonest.some((event) => event.gems !== null)
+        ? "gem counts where the announcement gives one"
+        : null,
       missing.length > 0 ? `${missing.join(" and ")} unavailable` : null,
     ]
       .filter((part) => part !== null)

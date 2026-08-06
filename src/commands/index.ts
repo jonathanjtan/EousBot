@@ -7,6 +7,7 @@ import { command as remindme } from "./remindme.js";
 import { command as request } from "./request.js";
 import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
+import { command as smash } from "./smash.js";
 import { command as status } from "./status.js";
 import { command as stock } from "./stock.js";
 import { command as stop } from "./stop.js";
@@ -34,6 +35,7 @@ export const commands: Command[] = [
   lenny,
   hoyohell,
   stock,
+  smash,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

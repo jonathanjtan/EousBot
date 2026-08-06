@@ -161,6 +161,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
+    if (interaction.isAutocomplete()) {
+      // Discord gives autocomplete three seconds and shows nothing if the
+      // window closes, so handlers answer from memory rather than the network.
+      const command = commandsByName.get(interaction.commandName);
+      if (command?.autocomplete) await command.autocomplete(interaction);
+      return;
+    }
+
     if (interaction.isModalSubmit()) {
       const target = decodeCustomId(interaction.customId);
       if (!target || target.action !== "revise") return;

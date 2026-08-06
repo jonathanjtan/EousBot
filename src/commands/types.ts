@@ -1,4 +1,5 @@
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
@@ -20,4 +21,6 @@ export interface Command {
   /** Restrict to DISCORD_ADMIN_IDS. Defaults to false (anyone may run it). */
   adminOnly?: boolean;
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  /** Suggestions for an option built with `setAutocomplete(true)`. */
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }

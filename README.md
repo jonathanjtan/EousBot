@@ -6,7 +6,7 @@ itself — behind a human approval gate.
 ```
 /request  ─────────▶  GitHub Issue                      anyone in the guild
 /status   ─────────▶  where each request stands         anyone
-/build N  ─────────▶  agent writes code in a worktree   admins only
+/claude N ─────────▶  agent writes code in a worktree   admins only
                           │
                      typecheck + tests must pass
                           │
@@ -32,7 +32,7 @@ design treats that as the central constraint rather than a footnote:
 
 | Boundary | What enforces it |
 |---|---|
-| Who can cause code to be written | `DISCORD_ADMIN_IDS` — `/build` is admin-only |
+| Who can cause code to be written | `DISCORD_ADMIN_IDS` — `/claude` is admin-only |
 | Who can cause code to be *re*written | Anyone, but only while usage is under 60% (`src/usagegate.ts`) |
 | Who can cause code to be deployed | The same allowlist, re-checked on button click |
 | What the agent may edit | A throwaway git worktree, never the live checkout |
@@ -77,10 +77,10 @@ does not permit third-party developers to offer claude.ai login or subscription
 rate limits *for their products*. The distinction that matters is who is
 causing the inference:
 
-- **Defensible:** `/build` stays admin-only, so only you can spend your own
+- **Defensible:** `/claude` stays admin-only, so only you can spend your own
   quota. That is your own automation with a Discord trigger — the same shape as
   driving `claude` yourself on a remote box you own.
-- **Not defensible:** opening `/build` to the guild, or adding any path that
+- **Not defensible:** opening `/claude` to the guild, or adding any path that
   lets someone else's input cause inference on your subscription. At that point
   it is a product served on your rate limits, and it needs its own API key.
 
@@ -122,7 +122,7 @@ npm run dev
 ```
 
 `DISCORD_ADMIN_IDS` is the entire security boundary. Leaving it empty disables
-`/build` and approval for everyone, which is the correct failure mode — the bot
+`/claude` and approval for everyone, which is the correct failure mode — the bot
 warns at startup when it's unset.
 
 ### 4. On the server
@@ -189,8 +189,8 @@ Mention it and say what you want:
 ```
 
 Naming an open request after a build word — `work on #16`, `build issue 12`,
-`implement #5` — runs the same pipeline `/build` does, at the configured model
-and effort. Use `/build` when you want to override those.
+`implement #5` — runs the same pipeline `/claude` does, at the configured model
+and effort. Use `/claude` when you want to override those.
 
 For feedback it picks the PR from an explicit `#11`, from the message you
 replied to, or from the only open PR — and asks if there are several.

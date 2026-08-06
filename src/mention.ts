@@ -159,7 +159,7 @@ async function runBuild(message: Message, issueNumber: number): Promise<void> {
 
   try {
     // No model or effort override: prose isn't a good place to pick one, and
-    // `/build` is still there for a request that warrants more.
+    // `/claude` is still there for a request that warrants more.
     const outcome = await buildFeature(request, (stage, detail) => {
       latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
       dirty = true;
@@ -312,5 +312,5 @@ function helpEmbed(): EmbedBuilder {
         "the reversible one. Approving and rejecting always want a button.",
       ].join("\n"),
     )
-    .setFooter({ text: "The slash commands all still work: /build /revise /status" });
+    .setFooter({ text: "The slash commands all still work: /claude /revise /status" });
 }

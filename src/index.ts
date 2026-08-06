@@ -95,7 +95,7 @@ async function reportInterruptedWork(): Promise<void> {
     `**A ${what} was interrupted** by a restart and did not finish.`,
     `Started by ${orphan.startedBy} at ${orphan.at}. Nothing was pushed, so nothing is half-done —`,
     orphan.kind === "build"
-      ? `run \`/build ${orphan.target}\` again when you're ready.`
+      ? `run \`/claude ${orphan.target}\` again when you're ready.`
       : `run \`/revise pr:${orphan.target}\` again when you're ready.`,
   ].join("\n");
 

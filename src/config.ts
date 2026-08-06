@@ -61,7 +61,7 @@ const schema = z.object({
   // long one. See docs/usage.md.
   AGENT_MAX_TURNS: z.coerce.number().int().positive().default(40),
 
-  // Standing reasoning effort for builds; /build can override it per build.
+  // Standing reasoning effort for builds; /claude can override it per build.
   AGENT_EFFORT: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT),
 
   // How much of each build session is reachable from the Claude app.
@@ -165,14 +165,14 @@ export const config = {
   },
 } as const;
 
-/** Privileged actions: /build, and clicking Approve or Reject on a PR. */
+/** Privileged actions: /claude, and clicking Approve or Reject on a PR. */
 export function isAdmin(userId: string): boolean {
   return config.discord.adminIds.has(userId);
 }
 
 if (config.discord.adminIds.size === 0) {
   console.warn(
-    "DISCORD_ADMIN_IDS is empty - /build and PR approval are disabled for everyone. " +
+    "DISCORD_ADMIN_IDS is empty - /claude and PR approval are disabled for everyone. " +
       "Set it to your Discord user ID to enable self-modification.",
   );
 }

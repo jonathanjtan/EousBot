@@ -42,7 +42,7 @@ export const command: Command = {
         .setTitle(`#${issue.number} — ${issue.title}`)
         .setURL(issue.url)
         .setDescription(details.length > 400 ? `${details.slice(0, 400)}…` : details)
-        .setFooter({ text: `Filed by ${interaction.user.username} · /build ${issue.number} to start` });
+        .setFooter({ text: `Filed by ${interaction.user.username} · /claude ${issue.number} to start` });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {

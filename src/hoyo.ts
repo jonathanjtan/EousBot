@@ -300,11 +300,12 @@ const HOUSEKEEPING = [
 
 /**
  * Real events nobody here wants listed. Genius Invokation TCG and Miliastra
- * Wonderland are their own side games, and the wish banners are a permanent
- * fixture of every version rather than something to clear, so all three crowd
- * out the list without telling anyone anything.
+ * Wonderland are their own side games, and the banners -- Genshin's wishes,
+ * Star Rail's warps, Zenless's signal searches -- are a permanent fixture of
+ * every version rather than something to clear, so they crowd out the list
+ * without telling anyone anything.
  */
-const UNWANTED = [/\btcg\b/i, /event wish/i, /miliastra/i];
+const UNWANTED = [/\btcg\b/i, /event wish/i, /event warp/i, /signal search/i, /miliastra/i];
 
 /** The events running right now, soonest to expire first. */
 export function expiringSoonest(events: HoyoEvent[], now: number, limit: number): HoyoEvent[] {

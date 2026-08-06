@@ -195,11 +195,11 @@ test("parseAnnouncements skips the sections a feed files its notices under", () 
 test("expiringSoonest keeps only what is running, soonest expiry first", () => {
   const events = expiringSoonest(parseAnnouncements(FILED, PAYLOAD), NOW, DEFAULT_COUNT);
 
-  // 2 and 12 are housekeeping, 3 is an evergreen notice, 7 hasn't opened and 8
-  // is over.
+  // 2 and 12 are housekeeping, 3 is an evergreen notice, 6 is a warp banner, 7
+  // hasn't opened and 8 is over.
   assert.deepEqual(
     events.map((e) => e.id),
-    [1, 5, 6],
+    [1, 5],
   );
   assert.ok(
     events.every((e) => e.startsAt <= NOW && e.endsAt > NOW),
@@ -211,7 +211,35 @@ test("expiringSoonest honours the requested count", () => {
   const events = parseAnnouncements(FILED, PAYLOAD);
   assert.equal(expiringSoonest(events, NOW, 1).length, 1);
   assert.equal(expiringSoonest(events, NOW, 1)[0]?.id, 1, "kept the wrong one");
-  assert.equal(expiringSoonest(events, NOW, 50).length, 3, "invented events to fill the count");
+  assert.equal(expiringSoonest(events, NOW, 50).length, 2, "invented events to fill the count");
+});
+
+test("expiringSoonest drops the TCG, banner and Miliastra entries", () => {
+  const running = (id, title) => ({
+    game: "Genshin",
+    id,
+    title,
+    startsAt: NOW - HOUR,
+    endsAt: NOW + HOUR,
+  });
+  const events = expiringSoonest(
+    [
+      running(1, "Genius Invokation TCG: Duel! Wits and Cards"),
+      running(2, 'Event Wish "Farewell of Snezhnaya" - Boosted Drop Rate!'),
+      running(3, "Miliastra Wonderland: Creator Season"),
+      running(4, "TCG Card Shop Update"),
+      running(5, "Ley Line Overflow"),
+      running(6, "Version 4.4 Event Warp: Phase II"),
+      running(7, "Signal Search: Astral Voice"),
+    ],
+    NOW,
+    DEFAULT_COUNT,
+  );
+
+  assert.deepEqual(
+    events.map((e) => e.id),
+    [5],
+  );
 });
 
 test("eventFields renders the game, the title and a Discord countdown", () => {

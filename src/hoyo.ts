@@ -298,12 +298,22 @@ const HOUSEKEEPING = [
   /\bost\b|trailer|livestream|concert|symphony/i,
 ];
 
+/**
+ * Real events nobody here wants listed. Genius Invokation TCG and Miliastra
+ * Wonderland are their own side games, and the banners -- Genshin's wishes,
+ * Star Rail's warps, Zenless's signal searches -- are a permanent fixture of
+ * every version rather than something to clear, so they crowd out the list
+ * without telling anyone anything.
+ */
+const UNWANTED = [/\btcg\b/i, /event wish/i, /event warp/i, /signal search/i, /miliastra/i];
+
 /** The events running right now, soonest to expire first. */
 export function expiringSoonest(events: HoyoEvent[], now: number, limit: number): HoyoEvent[] {
   return events
     .filter((event) => event.startsAt <= now && event.endsAt > now)
     .filter((event) => event.endsAt - event.startsAt <= EVERGREEN_MS)
     .filter((event) => !HOUSEKEEPING.some((pattern) => pattern.test(event.title)))
+    .filter((event) => !UNWANTED.some((pattern) => pattern.test(event.title)))
     .sort((a, b) => a.endsAt - b.endsAt || a.title.localeCompare(b.title))
     .slice(0, limit);
 }

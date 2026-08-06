@@ -111,6 +111,37 @@ export function buildApprovalMessage(opts: {
 }
 
 /**
+ * The shape of an approval prompt this module can edit afterwards.
+ *
+ * Structural rather than discord.js's Message so the modal handler can pass
+ * whatever it has -- including nothing, when the modal came from /revise
+ * instead of a button -- and so a test can pass a stub.
+ */
+export interface EditableApprovalMessage {
+  edit(options: { content: string; components: [] }): Promise<unknown>;
+}
+
+/**
+ * Retires the approval prompt whose Request changes button was just used.
+ *
+ * A revision rewrites the PR and posts its own approval prompt, so the old
+ * one's Approve button now points at a diff nobody has read. Stripping the
+ * buttons leaves the embed as a record without leaving it actionable.
+ *
+ * Best effort: the message may have been deleted or purged, and that should
+ * not fail the revision that was actually asked for.
+ */
+export async function closeApprovalButtons(
+  message: EditableApprovalMessage | null | undefined,
+  requestedByName: string,
+): Promise<void> {
+  if (!message) return;
+  await message
+    .edit({ content: `Changes requested by ${requestedByName}.`, components: [] })
+    .catch(() => undefined);
+}
+
+/**
  * The modal that collects revision feedback.
  *
  * A modal rather than a follow-up message because Discord will not let a

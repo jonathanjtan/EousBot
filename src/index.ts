@@ -10,6 +10,7 @@ import {
   FEEDBACK_INPUT_ID,
   buildApprovalMessage,
   buildRevisionModal,
+  closeApprovalButtons,
   decodeCustomId,
 } from "./approval.js";
 import { commandsByName } from "./commands/index.js";
@@ -199,6 +200,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         );
         return;
       }
+
+      // Only now that the revision is definitely running: a refused or
+      // blocked request leaves the prompt approvable, because nothing changed.
+      // interaction.message is null when the modal came from /revise, which
+      // closeApprovalButtons handles.
+      await closeApprovalButtons(interaction.message, interaction.user.username);
 
       let latest = "Starting…";
       let dirty = false;

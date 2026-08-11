@@ -2,6 +2,7 @@ import { command as avatar } from "./avatar.js";
 import { command as bugcat } from "./bugcat.js";
 import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
+import { command as embed } from "./embed.js";
 import { command as hoyohell } from "./hoyohell.js";
 import { command as lenny } from "./lenny.js";
 import { command as ping } from "./ping.js";
@@ -42,6 +43,7 @@ export const commands: Command[] = [
   bugcat,
   avatar,
   strip,
+  embed,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

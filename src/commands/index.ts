@@ -13,6 +13,7 @@ import { command as smash } from "./smash.js";
 import { command as status } from "./status.js";
 import { command as stock } from "./stock.js";
 import { command as stop } from "./stop.js";
+import { command as strip } from "./strip.js";
 import { command as usage } from "./usage.js";
 import type { Command } from "./types.js";
 
@@ -40,6 +41,7 @@ export const commands: Command[] = [
   smash,
   bugcat,
   avatar,
+  strip,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

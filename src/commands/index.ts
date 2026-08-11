@@ -1,3 +1,4 @@
+import { command as avatar } from "./avatar.js";
 import { command as bugcat } from "./bugcat.js";
 import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
@@ -38,6 +39,7 @@ export const commands: Command[] = [
   stock,
   smash,
   bugcat,
+  avatar,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

@@ -1,12 +1,13 @@
 import { EmbedBuilder, type Message } from "discord.js";
 import { buildApprovalMessage } from "./approval.js";
-import { answer, downloadImages, imagesFrom, splitForDiscord } from "./chat.js";
+import { answer, downloadImages, imagesFrom, releaseWorkspace, splitForDiscord } from "./chat.js";
 import { config, isAdmin } from "./config.js";
 import * as gh from "./github.js";
 import { acquire, describe, release } from "./inflight.js";
 import { parseMentionIntent } from "./intent.js";
 import { log } from "./log.js";
 import { buildFeature, revisePullRequest } from "./pipeline.js";
+import type { OutputFile } from "./chat.js";
 
 /**
  * Conversational entry point: talking to the bot instead of driving it.
@@ -159,6 +160,11 @@ export async function handleMention(message: Message): Promise<void> {
   await runRevision(message, target.number, intent.feedback);
 }
 
+/** Agent-produced files, in the shape discord.js wants for an upload. */
+function attachments(files: OutputFile[]) {
+  return files.map((f) => ({ attachment: f.path, name: f.name }));
+}
+
 /**
  * One question in flight per person.
  *
@@ -196,22 +202,37 @@ async function runChat(message: Message, text: string): Promise<void> {
 
   try {
     const { images, skipped } = await downloadImages(imagesFrom(message.attachments.values()));
-    const result = await answer({ text, images, askedBy: message.author.username });
+    const result = await answer({
+      text,
+      images,
+      askedBy: message.author.username,
+      // The channel is the conversation: a follow-up resumes the same session
+      // and finds the same workspace, so "now crop it" means something.
+      conversation: message.channelId,
+    });
     clearInterval(typing);
 
     if (!result.ok) {
-      await message.reply(`I couldn't answer that — ${result.error.slice(0, 400)}`);
+      await message.reply(
+        result.error === "STOPPED"
+          ? "Stopped."
+          : `I couldn't answer that — ${result.error.slice(0, 400)}`,
+      );
       return;
     }
 
     // Skips are appended rather than sent first: the answer is what was asked
     // for, and "I ignored your HEIC" is a footnote to it.
     const note = skipped.length > 0 ? `\n\n-# Couldn't read: ${skipped.join(", ")}` : "";
+    const chunks = splitForDiscord((result.reply || "Done.") + note);
 
     let last = message;
-    for (const chunk of splitForDiscord(result.reply + note)) {
-      last = await last.reply(chunk);
+    for (const [i, chunk] of chunks.entries()) {
+      // Files ride on the final message so the prose arrives first.
+      const attach = i === chunks.length - 1 ? attachments(result.files) : undefined;
+      last = await last.reply(attach?.length ? { content: chunk, files: attach } : chunk);
     }
+    if (result.ephemeral) await releaseWorkspace(result.workspace);
   } catch (err) {
     clearInterval(typing);
     log.error("Chat handler threw", { err: String(err) });

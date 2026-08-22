@@ -217,12 +217,42 @@ specifically.
 
 ### Asking it things
 
-A mention that is simply a question gets answered. It goes to `src/chat.ts`,
-which is a different agent from the one that writes code: no worktree, no file
-or shell tools, no repository, no GitHub — a short run whose only tools are
-`WebSearch` and `WebFetch`, and whose only output is a Discord reply. Attach an
-image **to your own message** and it reads that too (JPEG, PNG, GIF or WebP, up
-to four).
+A mention that is simply a question gets answered — by a full Claude Code
+agent, not a chatbot. `src/chat.ts` runs the real tool set (Bash, Read, Write)
+at `bypassPermissions`, in a scratch workspace, and **anything it leaves in
+that workspace is attached to the reply**. Ask it to turn thirty image links
+into a collage and it writes a script, runs it, and hands back a JPEG.
+
+That shape was arrived at the hard way. The first version had two tools —
+`WebSearch` and `WebFetch` — and when asked for exactly that collage it
+correctly reported it couldn't, which is what no Claude Code session would ever
+say. Building a bespoke tool per request is a losing race.
+
+The channel is the conversation: a follow-up resumes the same session and finds
+the same workspace, so "now crop it" means something. `/stop` reaches a chat run
+via its own slot in `src/running.ts`, kept separate so a question asked
+mid-build can't overwrite the build's handle and leave it unstoppable.
+
+**What actually bounds this agent:**
+
+| | |
+|---|---|
+| Who can reach it | `DISCORD_ADMIN_IDS`, at every entry point. This is the control. |
+| Where it writes | A per-conversation scratch dir under `CHAT_WORKSPACE_ROOT` |
+| How long it runs | `CHAT_MAX_TURNS`, and `/stop` |
+| What it reads | Anything the bot's Unix user can read |
+
+That last row is the honest one. **The workspace is hygiene, not a security
+boundary** — it runs as the same user as the bot, so `.env` and the host's
+`claude` credentials are reachable by an agent that has been talked into it.
+The allowlist bounds who can *ask*; it does not bound what the agent *reads*,
+and through the context menu and web tools it reads quoted messages,
+screenshots and web pages that other people wrote. The system prompt treats all
+of that as hostile input, because it is the only thing that does.
+
+If this ever needs to be safe rather than merely gated — anything wider than
+one trusted admin — it wants its own Unix user or a container, not a longer
+system prompt.
 
 ### Asking about someone else's message
 
@@ -452,7 +482,7 @@ src/
   config.ts       env validation; exits on bad config
   commands/       slash commands + the registry
   agent.ts        Claude Agent SDK wrapper and its system prompt
-  chat.ts         the question-answering agent: web tools only, no repo
+  chat.ts         Claude Code in a scratch workspace, reachable from Discord
   commands/ask.ts "Ask EousBot" on a right-clicked message
   intent.ts       reading intent from a mention (no imports, so tests are cheap)
   mention.ts      the @mention entry point: chat, build, revise, approve

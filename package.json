@@ -20,6 +20,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.221",
     "@octokit/rest": "^22.0.1",
     "discord.js": "^14.27.0",
+    "sharp": "^0.35.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

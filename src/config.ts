@@ -80,16 +80,25 @@ const schema = z.object({
     .default("true")
     .transform((v) => v === "true"),
   CHAT_MODEL: z.string().default("claude-sonnet-5"),
-  CHAT_EFFORT: z.enum(EFFORT_LEVELS).default("low"),
-  // Enough for a search, a fetch and an answer. A chat turn that needs more
-  // than this is a question the bot should be declining, not grinding at.
-  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(8),
-  // The only outbound network access any agent here gets. Off, the bot answers
-  // from the model's own knowledge and will be wrong about anything current.
-  CHAT_WEB_SEARCH: z
-    .enum(["true", "false"])
-    .default("true")
-    .transform((v) => v === "true"),
+  // Higher than it was when chat could only search and answer: this agent has
+  // a shell and is expected to actually finish jobs.
+  CHAT_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
+  // Enough to fetch thirty files, write a script and run it. Still a ceiling:
+  // a conversational run bills the same as any other.
+  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(30),
+  // Where conversational agents get their scratch directory. Never the
+  // checkout -- see chat.ts. Blank uses a subdirectory of the system temp dir.
+  CHAT_WORKSPACE_ROOT: z.string().default(""),
+  // How long a Discord channel's session and workspace survive between
+  // messages, so a follow-up continues rather than starting over.
+  CHAT_CONVERSATION_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(2 * 60 * 60 * 1000),
+  // Total bytes of agent-produced files attached to one reply. Discord's own
+  // ceiling is 10MB on an unboosted guild; this stays under it.
+  CHAT_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(8_000_000),
 
   // Optional. Derived from this module's own location by default -- see
   // defaultRepoPath below. Only set it if the checkout genuinely isn't the
@@ -235,7 +244,9 @@ export const config = {
     model: env.CHAT_MODEL,
     effort: env.CHAT_EFFORT,
     maxTurns: env.CHAT_MAX_TURNS,
-    webSearch: env.CHAT_WEB_SEARCH,
+    workspaceRoot: env.CHAT_WORKSPACE_ROOT,
+    conversationTtlMs: env.CHAT_CONVERSATION_TTL_MS,
+    maxUploadBytes: env.CHAT_MAX_UPLOAD_BYTES,
   },
   runtime: {
     repoPath,

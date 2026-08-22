@@ -6,7 +6,7 @@ import {
   type ModalSubmitInteraction,
 } from "discord.js";
 import { QUESTION_INPUT_ID, buildAskModal } from "../approval.js";
-import { answer, downloadImages, imagesFrom, splitForDiscord } from "../chat.js";
+import { answer, downloadImages, imagesFrom, releaseWorkspace, splitForDiscord } from "../chat.js";
 import { config } from "../config.js";
 import { log } from "../log.js";
 import type { MessageCommand } from "./types.js";
@@ -138,17 +138,29 @@ export async function handleAskModal(
     });
 
     if (!result.ok) {
-      await interaction.editReply(`I couldn't answer that — ${result.error.slice(0, 400)}`);
+      await interaction.editReply(
+        result.error === "STOPPED"
+          ? "Stopped."
+          : `I couldn't answer that — ${result.error.slice(0, 400)}`,
+      );
       return;
     }
 
     const note = skipped.length > 0 ? `\n\n-# Couldn't read: ${skipped.join(", ")}` : "";
-    const chunks = splitForDiscord(
-      (question ? `> ${question.split("\n")[0]?.slice(0, 150)}\n\n` : "") + result.reply + note,
-    );
+    const quote = question ? `> ${question.split("\n")[0]?.slice(0, 150)}\n\n` : "";
+    const chunks = splitForDiscord(quote + (result.reply || "Done.") + note);
+    const files = result.files.map((f) => ({ attachment: f.path, name: f.name }));
 
-    await interaction.editReply(chunks[0] ?? "(nothing to say)");
-    for (const chunk of chunks.slice(1)) await interaction.followUp(chunk);
+    // Files ride on the final message so the prose arrives first.
+    for (const [i, chunk] of chunks.entries()) {
+      const attach = i === chunks.length - 1 && files.length > 0 ? files : undefined;
+      const payload = attach ? { content: chunk, files: attach } : { content: chunk };
+      if (i === 0) await interaction.editReply(payload);
+      else await interaction.followUp(payload);
+    }
+    // A context menu ask is a one-shot -- nothing will follow up on it, so the
+    // workspace goes as soon as Discord has the bytes.
+    if (result.ephemeral) await releaseWorkspace(result.workspace);
   } catch (err) {
     log.error("Ask modal threw", { err: String(err) });
     await interaction

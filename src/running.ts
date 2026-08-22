@@ -20,6 +20,15 @@ export interface Stoppable {
 }
 
 let current: Stoppable | null = null;
+/**
+ * A conversational run, held apart from the build above.
+ *
+ * One slot was enough while chat had two web tools and a ceiling of eight
+ * turns. It is not enough now that a question can take thirty turns with a
+ * shell: chat has to be stoppable, and sharing the slot would mean a question
+ * asked mid-build overwrites the build's handle and leaves it unstoppable.
+ */
+let currentChat: Stoppable | null = null;
 let stoppedDeliberately = false;
 
 export function setRunning(q: Stoppable | null): void {
@@ -27,8 +36,17 @@ export function setRunning(q: Stoppable | null): void {
   if (q) stoppedDeliberately = false;
 }
 
+export function setRunningChat(q: Stoppable | null): void {
+  currentChat = q;
+  if (q) stoppedDeliberately = false;
+}
+
 export function isRunning(): boolean {
   return current !== null;
+}
+
+export function isChatRunning(): boolean {
+  return currentChat !== null;
 }
 
 /**
@@ -39,10 +57,13 @@ export function isRunning(): boolean {
  * stop is needlessly alarming.
  */
 export async function stopRunning(): Promise<boolean> {
-  if (!current) return false;
+  // The build first: it is the one with money and a pull request riding on it,
+  // and a chat run costs less to leave alone for another few seconds.
+  const target = current ?? currentChat;
+  if (!target) return false;
   stoppedDeliberately = true;
   try {
-    await current.interrupt();
+    await target.interrupt();
     log.info("Agent interrupted by request");
     return true;
   } catch (err) {

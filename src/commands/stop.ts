@@ -1,6 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import { describe, held } from "../inflight.js";
-import { isRunning, stopRunning } from "../running.js";
+import { isChatRunning, isRunning, stopRunning } from "../running.js";
 import type { Command } from "./types.js";
 
 /**
@@ -25,7 +25,7 @@ export const command: Command = {
   async execute(interaction) {
     const claim = held();
 
-    if (!isRunning()) {
+    if (!isRunning() && !isChatRunning()) {
       await interaction.reply({
         content: claim
           ? `${describe(claim)} is in a stage that isn't the agent — installing, running gates, or pushing. Those finish on their own shortly.`

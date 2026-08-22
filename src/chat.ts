@@ -303,13 +303,32 @@ function workspaceRoot(): string {
   return config.chat.workspaceRoot || join(tmpdir(), "eousbot-chat");
 }
 
-/** Drops workspaces older than the conversation window, on the way in. */
+/**
+ * Drops workspaces older than the conversation window, on the way in.
+ *
+ * Sweeps the directory as well as the map, because a restart loses the map
+ * while leaving the directories behind -- without the second pass those are
+ * never collected, and the bot restarts on every self-deploy.
+ */
 async function pruneWorkspaces(): Promise<void> {
   const cutoff = Date.now() - config.chat.conversationTtlMs;
+
   for (const [key, convo] of conversations) {
     if (convo.at >= cutoff) continue;
     conversations.delete(key);
     await rm(convo.dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  const live = new Set([...conversations.values()].map((c) => c.dir));
+  const root = workspaceRoot();
+  for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(root, entry.name);
+    if (live.has(dir)) continue;
+    const info = await stat(dir).catch(() => null);
+    if (info && info.mtimeMs < cutoff) {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 
@@ -448,7 +467,7 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
       } else if (message.type === "result") {
         costUsd = "total_cost_usd" in message ? (message.total_cost_usd as number) : null;
         if (message.subtype !== "success") {
-          return failed(
+          return await failed(
             convo,
             request,
             wasStopped()
@@ -465,7 +484,7 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
     }
   } catch (err) {
     log.error("Chat threw", { err: String(err) });
-    return failed(convo, request, String(err));
+    return await failed(convo, request, String(err));
   } finally {
     setRunningChat(null);
   }
@@ -481,7 +500,7 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
   });
 
   if (!reply.trim() && files.length === 0) {
-    return failed(convo, request, "the model returned nothing");
+    return await failed(convo, request, "the model returned nothing");
   }
   return { ok: true, reply: reply.trim(), costUsd, files, workspace: convo.dir, ephemeral };
 }
@@ -492,8 +511,14 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
  * A one-shot is never in `conversations`, so the TTL sweep will never see its
  * directory -- without this, every failed question leaks one.
  */
-function failed(convo: Conversation, request: ChatRequest, error: string): ChatResult {
-  if (!request.conversation) void releaseWorkspace(convo.dir);
+async function failed(
+  convo: Conversation,
+  request: ChatRequest,
+  error: string,
+): Promise<ChatResult> {
+  // Awaited, not fired and forgotten: an unawaited delete races process exit,
+  // which is exactly the case a short-lived caller hits.
+  if (!request.conversation) await releaseWorkspace(convo.dir);
   return { ok: false, error };
 }
 

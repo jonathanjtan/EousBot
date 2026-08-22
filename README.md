@@ -100,9 +100,11 @@ At <https://discord.com/developers/applications>: create an application, add a
 bot, copy the token and application ID. Invite it with the `bot` and
 `applications.commands` scopes and the **Send Messages** permission.
 
-No privileged intents are required — the bot only requests `Guilds` and is
-driven entirely by slash commands and buttons. It never reads message content,
-which keeps it out of intent review and limits what a stolen token is worth.
+No privileged intents are required — the bot requests only `Guilds` and
+`GuildMessages`, and reads message content solely where Discord exempts it:
+messages that mention it, and messages a context menu command is used on. It
+cannot read the server's ordinary conversation, which keeps it out of intent
+review and limits what a stolen token is worth.
 
 ### 2. GitHub token
 
@@ -186,6 +188,8 @@ Mention it and say what you want:
 @PaimonBot drop the polling watcher, make it a command instead
 @PaimonBot looks good, ship it
 @PaimonBot #11 use a simpler parser
+@PaimonBot what's the weather in Osaka right now?
+@PaimonBot what breed is this?          ← with a photo attached
 ```
 
 Naming an open request after a build word — `work on #16`, `build issue 12`,
@@ -210,6 +214,67 @@ config from env, see #11" stays feedback about #11 rather than becoming a build
 of it. Anything it can't classify becomes feedback too — it fails
 toward the reversible outcome by construction, and the tests cover that case
 specifically.
+
+### Asking it things
+
+A mention that is simply a question gets answered. It goes to `src/chat.ts`,
+which is a different agent from the one that writes code: no worktree, no file
+or shell tools, no repository, no GitHub — a short run whose only tools are
+`WebSearch` and `WebFetch`, and whose only output is a Discord reply. Attach an
+image **to your own message** and it reads that too (JPEG, PNG, GIF or WebP, up
+to four).
+
+### Asking about someone else's message
+
+Replying to a post and mentioning the bot does *not* let it see that post. This
+is a Discord boundary, not a bug: `MESSAGE_CONTENT` is a privileged intent, and
+apps without it "receive empty values in fields that contain user-inputted
+content" — `content`, `embeds`, `attachments`. Crucially that restriction
+"affects the HTTP API endpoints your app is permitted to call" too, so fetching
+the message you replied to returns it emptied. The exceptions are messages the
+app sent, DMs, messages that mention it, and **the message a context menu
+command is used on**.
+
+That last exception is the way in. **Right-click any message → Apps → Ask
+EousBot**, type a question (or leave it blank), and the bot gets that message's
+full text and images without the privileged intent:
+
+```
+right-click a photo → Apps → Ask EousBot → "what breed is this?"
+```
+
+`src/commands/ask.ts` captures the message at right-click time and stashes it
+for the modal, because it genuinely cannot be fetched again — re-reading the
+same message by ID from the modal submit returns it blank. The stash is
+in-memory with a 15-minute TTL, matching Discord's interaction token lifetime;
+a restart in between asks you to right-click again rather than guessing.
+
+The quoted message reaches the model fenced and labelled as third-party data,
+with the closing tag neutralised so it can't break out of its own fence. It is
+someone else's writing, delivered to an agent, which is exactly the shape
+prompt injection takes.
+
+Routing is on positive evidence rather than fallthrough. A question opener
+("what", "why", "how", "tell me", "explain", "can you explain…"), an attached
+image, or a trailing `?` with no change-request marker in the message routes to
+chat; everything else stays on the review path exactly as before. The
+asymmetry is deliberate — misreading a question as feedback spends a build and
+opens a PR nobody wanted, while misreading feedback as a question costs one
+reply and a retype. If a piece of feedback keeps getting answered instead of
+acted on, reply to the bot's review message: a reply to its own message is
+treated as PR context and never routes to chat.
+
+Chat takes no inflight lock, so a question during a build is just a question.
+It is serialised per person instead, so a double-ping can't pay twice.
+
+**It is admin-only, and that is a billing decision rather than a safety one.**
+Chat can't reach anything a build can. But in `hostAuth` mode every answer is
+billed against the host account's Claude login, and `DISCORD_ADMIN_IDS` is the
+only thing bounding who can spend it. Opening it to the whole guild means
+setting a real `ANTHROPIC_API_KEY` in the same change — and note the usage gate
+in `src/usagegate.ts` is a percentage-of-limits check, not a rate limiter.
+Turn the feature off entirely with `CHAT_ENABLED=false`; see the `Chat` block
+in `.env.example` for the model, effort, turn and web-search settings.
 
 **No privileged intent is needed.** Discord delivers full content for messages
 that mention an app even without `MessageContent`, so the bot reads what is
@@ -275,6 +340,69 @@ attaches to interactive sessions, and an SDK-driven build is not one.
 `docs/usage.md` records what was measured and the two architectural routes that
 would work, so it doesn't get re-attempted.
 
+## Drop alerts
+
+`/restock` pings you when a Pokémon drop gets called. Off unless
+`TARGET_RESTOCK_ENABLED=true`.
+
+```
+/restock watch keyword:target      ping me when a drop post mentions this word
+/restock list
+/restock unwatch keyword:target
+/restock check item:<url|number>   read one Target listing right now
+/restock sources                   which feeds, and are they healthy
+```
+
+**It alerts. It does not buy.** Target's terms prohibit automated purchasing, and
+the anti-bot on checkout is what gets an account and a card banned. The part a
+person actually loses a drop on isn't clicking — it's finding out forty minutes
+late — so that's the part this deletes.
+
+### Why it relays feeds instead of polling Target
+
+Because there is nothing to poll. Measured, not assumed:
+
+| Source | Host | Result |
+|---|---|---|
+| Product page HTML | `www.target.com` (Fastly) | **200** from anywhere. Title, purchase limit, seller, release date. |
+| Live price + stock | `redsky.target.com` | **403 + CAPTCHA challenge**, identically from Azure and from residential. |
+
+The page also sets `isProductDetailServerSideRenderPriceEnabled: false` and
+carries no JSON-LD and no `og:availability`, so the HTML holds *no* stock signal
+at all. Stock exists only behind the challenged endpoint. That challenge is
+keyed on the request rather than the network, so no other host fixes it and
+neither does waiting — and satisfying it is deliberately out of scope.
+
+What works instead is other people. r/pkmntcgdeals posts "Target drop has
+started!" minutes before it surfaces anywhere else, and the recurring
+midnight-PST window is common knowledge there and available from no endpoint. So
+`/restock watch` matches a keyword against public RSS and relays hits, product
+links included. Reading an RSS feed is also something feeds are *for*, which the
+alternative was not.
+
+`/restock check` still reads a listing directly — it just reports the static
+half, and says plainly when live stock is unreadable rather than looking like an
+item that never restocked.
+
+Target's own **Notify me when it's back** button remains the best first-party
+option for a specific item.
+
+### Feeds and rate limiting
+
+Defaults to r/pkmntcgdeals; override with `TARGET_FEED_URLS` as
+`name|url,name|url`. One timer for all sources, polled every ~2 minutes with
+jitter, doubling backoff on any 429/403 up to an hour.
+
+Reddit rate-limits unauthenticated readers hard — two requests back to back was
+enough to earn a 429 while building this — so the interval is minutes, not
+seconds, and the bot sends a descriptive User-Agent. Nothing is gained by going
+faster: the humans writing these posts are the latency floor, not the feed.
+
+The first poll after a fresh install only primes the dedupe list, so a new
+install doesn't relay 25 old posts as if they were live drops. Both the
+subscriptions and the seen-entry ids live in `state/eousbot.json`, so a
+self-deploy landing mid-drop doesn't replay the channel.
+
 ## Adding commands
 
 Drop a module in `src/commands/` exporting a `Command`, then register it in
@@ -324,13 +452,22 @@ src/
   config.ts       env validation; exits on bad config
   commands/       slash commands + the registry
   agent.ts        Claude Agent SDK wrapper and its system prompt
+  chat.ts         the question-answering agent: web tools only, no repo
+  commands/ask.ts "Ask EousBot" on a right-clicked message
+  intent.ts       reading intent from a mention (no imports, so tests are cheap)
+  mention.ts      the @mention entry point: chat, build, revise, approve
   pipeline.ts     worktree → agent → typecheck → test → PR
   selfdeploy.ts   merge → pull → build → restart
   approval.ts     approval embed and button custom-ID codec
   github.ts       issues, labels, pull requests
   git.ts          worktree lifecycle, shell-free command execution
   naming.ts       pure helpers (no imports, so tests need no secrets)
-  state.ts        the one fact that must outlive a restart
+  state.ts        the facts that must outlive a restart
+  feed.ts         drop-feed parsing, matching, dedupe, backoff (pure)
+  feedwatch.ts    the feed polling timer and the Discord side
+  target.ts       parsing a Target listing (pure)
+  targetapi.ts    fetching one, and the CAPTCHA wall behind live stock
+  listing.ts      rendering what we can read about a listing (pure)
 infra/
   install.sh      install/update on an existing Linux box
   eousbot.service systemd user unit

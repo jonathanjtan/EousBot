@@ -70,12 +70,53 @@ const schema = z.object({
   //   remote - also starts the Remote Control bridge, so you can steer it
   AGENT_SESSION_VISIBILITY: z.enum(["off", "view", "remote"]).default("view"),
 
+  // ---------------------------------------------------------------- chat ---
+  // Answering a question put to the bot by mentioning it. Kept apart from the
+  // AGENT_* settings on purpose: a build is one long run over a source tree,
+  // a chat turn is a short run over nothing, and giving the two the same model
+  // and turn ceiling would mean paying build prices to be asked the time.
+  CHAT_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  CHAT_MODEL: z.string().default("claude-sonnet-5"),
+  CHAT_EFFORT: z.enum(EFFORT_LEVELS).default("low"),
+  // Enough for a search, a fetch and an answer. A chat turn that needs more
+  // than this is a question the bot should be declining, not grinding at.
+  CHAT_MAX_TURNS: z.coerce.number().int().positive().default(8),
+  // The only outbound network access any agent here gets. Off, the bot answers
+  // from the model's own knowledge and will be wrong about anything current.
+  CHAT_WEB_SEARCH: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+
   // Optional. Derived from this module's own location by default -- see
   // defaultRepoPath below. Only set it if the checkout genuinely isn't the
   // one this code was loaded from.
   REPO_PATH: z.string().optional(),
   SYSTEMD_UNIT: z.string().default(""),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  // ------------------------------------------------------------- /restock ---
+  // Drop alerting is opt-in. It is the only feature that talks to a third party
+  // on a timer.
+  TARGET_RESTOCK_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Used by `/restock check`, which reads a listing's static facts. Pricing and
+  // pickup are per-store; the default is a real store and will answer, but it
+  // won't be *your* prices.
+  TARGET_STORE_ID: z.string().default("1234"),
+  TARGET_ZIP: z.string().default(""),
+  TARGET_STATE: z.string().default(""),
+  // Feeds to relay, comma-separated as `name|url`. Left blank, the defaults
+  // below are used.
+  TARGET_FEED_URLS: z.string().default(""),
+  // Minutes, not seconds. Reddit rate-limits unauthenticated readers hard, and
+  // the humans writing these posts are the latency floor regardless.
+  TARGET_FEED_POLL_MS: z.coerce.number().int().min(60_000).default(120_000),
 });
 
 /**
@@ -92,6 +133,33 @@ const schema = z.object({
  */
 function defaultRepoPath(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+/**
+ * Feeds relayed by /restock, when TARGET_FEED_URLS doesn't override them.
+ *
+ * Reddit's per-subreddit RSS needs no key and no account. r/pkmntcgdeals is the
+ * default because it is where Target drops get called *before* they land --
+ * "Target drop has started!" and the recurring midnight-PST window are common
+ * knowledge there and available from no endpoint.
+ */
+const DEFAULT_FEEDS: { name: string; url: string }[] = [
+  { name: "r/pkmntcgdeals", url: "https://www.reddit.com/r/pkmntcgdeals/new.rss" },
+];
+
+/** `name|url,name|url`. A bare URL is allowed and names itself after its host. */
+function parseFeeds(raw: string): { name: string; url: string }[] {
+  const entries = csv(raw)
+    .map((item) => {
+      const [first, second] = item.split("|").map((s) => s.trim());
+      const url = second ?? first;
+      if (!url || !/^https?:\/\//.test(url)) return null;
+      const name = second ? (first ?? url) : new URL(url).hostname;
+      return { name, url };
+    })
+    .filter((f): f is { name: string; url: string } => f !== null);
+
+  return entries.length > 0 ? entries : DEFAULT_FEEDS;
 }
 
 const parsed = schema.safeParse(process.env);
@@ -158,10 +226,41 @@ export const config = {
     maxTurns: env.AGENT_MAX_TURNS,
     sessionVisibility: env.AGENT_SESSION_VISIBILITY,
   },
+  /**
+   * Conversational replies to a mention. See chat.ts for what this agent is
+   * allowed to touch, which is almost nothing.
+   */
+  chat: {
+    enabled: env.CHAT_ENABLED,
+    model: env.CHAT_MODEL,
+    effort: env.CHAT_EFFORT,
+    maxTurns: env.CHAT_MAX_TURNS,
+    webSearch: env.CHAT_WEB_SEARCH,
+  },
   runtime: {
     repoPath,
     systemdUnit: env.SYSTEMD_UNIT,
     logLevel: env.LOG_LEVEL,
+  },
+  /**
+   * Drop alerting. See feed.ts for why this relays community feeds rather than
+   * polling Target directly, and commands/restock.ts for what it won't do.
+   */
+  target: {
+    enabled: env.TARGET_RESTOCK_ENABLED,
+    storeId: env.TARGET_STORE_ID,
+    zip: env.TARGET_ZIP,
+    state: env.TARGET_STATE,
+    feeds: parseFeeds(env.TARGET_FEED_URLS),
+    poll: {
+      baseMs: env.TARGET_FEED_POLL_MS,
+      // Jitter so a restart doesn't put every deploy's first poll on the same
+      // second of the minute.
+      jitterMs: 15_000,
+      backoffStartMs: 300_000,
+      backoffMaxMs: 3_600_000,
+      maxConsecutiveBlocks: 5,
+    },
   },
 } as const;
 

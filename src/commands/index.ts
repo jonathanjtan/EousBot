@@ -1,3 +1,4 @@
+import { command as ask } from "./ask.js";
 import { command as avatar } from "./avatar.js";
 import { command as bugcat } from "./bugcat.js";
 import { command as claude } from "./claude.js";
@@ -8,6 +9,7 @@ import { command as lenny } from "./lenny.js";
 import { command as ping } from "./ping.js";
 import { command as remindme } from "./remindme.js";
 import { command as request } from "./request.js";
+import { command as restock } from "./restock.js";
 import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
 import { command as smash } from "./smash.js";
@@ -16,7 +18,7 @@ import { command as stock } from "./stock.js";
 import { command as stop } from "./stop.js";
 import { command as strip } from "./strip.js";
 import { command as usage } from "./usage.js";
-import type { Command } from "./types.js";
+import type { Command, MessageCommand } from "./types.js";
 
 /**
  * The command registry.
@@ -44,8 +46,18 @@ export const commands: Command[] = [
   avatar,
   strip,
   embed,
+  restock,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));
 
-export type { Command };
+/**
+ * Message context menu commands -- the "Apps" submenu on a right-clicked
+ * message. Registered alongside the slash commands, routed separately because
+ * Discord delivers them as a different interaction type.
+ */
+export const messageCommands: MessageCommand[] = [ask];
+
+export const messageCommandsByName = new Map(messageCommands.map((c) => [c.data.name, c]));
+
+export type { Command, MessageCommand };

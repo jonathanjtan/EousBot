@@ -1,5 +1,5 @@
 import { Routes, type REST } from "discord.js";
-import { commands } from "./commands/index.js";
+import { commands, messageCommands } from "./commands/index.js";
 import { config } from "./config.js";
 import { log } from "./log.js";
 
@@ -30,6 +30,7 @@ import { log } from "./log.js";
 function signature(cmd: {
   name?: string;
   description?: string;
+  type?: number;
   options?: unknown[];
 }): string {
   const options = (cmd.options ?? []).map((raw) => {
@@ -43,13 +44,27 @@ function signature(cmd: {
     };
   });
 
-  return JSON.stringify({ name: cmd.name, description: cmd.description ?? "", options });
+  // Defaulted rather than passed through: builders omit `type` for a slash
+  // command while Discord echoes back 1, and an unnormalised comparison would
+  // report a difference on every boot and re-register forever.
+  return JSON.stringify({
+    name: cmd.name,
+    type: cmd.type ?? 1,
+    description: cmd.description ?? "",
+    options,
+  });
+}
+
+/** Everything registered with Discord, slash and context menu alike. */
+function allPayloads(): Parameters<typeof signature>[0][] {
+  return [
+    ...commands.map((c) => c.data.toJSON()),
+    ...messageCommands.map((c) => c.data.toJSON()),
+  ] as Parameters<typeof signature>[0][];
 }
 
 function localSignatures(): string[] {
-  return commands
-    .map((c) => signature(c.data.toJSON() as Parameters<typeof signature>[0]))
-    .sort();
+  return allPayloads().map(signature).sort();
 }
 
 /**
@@ -65,7 +80,7 @@ export async function syncGuildCommands(
   opts: { force?: boolean } = {},
 ): Promise<boolean> {
   const route = Routes.applicationGuildCommands(config.discord.appId, config.discord.guildId);
-  const body = commands.map((c) => c.data.toJSON());
+  const body = allPayloads();
 
   if (!opts.force) {
     try {
@@ -80,7 +95,7 @@ export async function syncGuildCommands(
 
       log.info("Slash commands differ from Discord; re-registering", {
         registered: existing.map((c) => c.name).join(", ") || "(none)",
-        local: commands.map((c) => c.data.name).join(", "),
+        local: allPayloads().map((c) => c.name).join(", "),
       });
     } catch (err) {
       // A read failure should not block the write -- registering anyway is the
@@ -92,7 +107,7 @@ export async function syncGuildCommands(
   await rest.put(route, { body });
   log.info(`Registered ${body.length} commands`, {
     guild: config.discord.guildId,
-    commands: commands.map((c) => c.data.name).join(", "),
+    commands: body.map((c) => c.name).join(", "),
   });
   return true;
 }

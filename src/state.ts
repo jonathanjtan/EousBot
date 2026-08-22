@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import type { FeedWatch } from "./feed.js";
 import type { ResetMemory } from "./reminders.js";
 
 /**
@@ -48,6 +49,22 @@ interface StateShape {
   usageReminders: string[];
   /** Last-seen reset timestamps, so a restart doesn't replay old rollovers. */
   resetMemory: ResetMemory;
+  /**
+   * Keyword subscriptions against the drop feeds.
+   *
+   * On disk rather than in memory for the usual reason: the bot restarts
+   * itself, and a watch set up the night before a morning drop has to survive
+   * whatever deploys happen in between or it silently isn't watching when it
+   * matters.
+   */
+  feedWatches: FeedWatch[];
+  /**
+   * Feed entry ids already relayed.
+   *
+   * Also on disk, and for a sharper reason: without it a self-deploy landing
+   * mid-drop would replay the last 25 posts into the channel.
+   */
+  seenEntries: string[];
 }
 
 const EMPTY: StateShape = {
@@ -55,6 +72,8 @@ const EMPTY: StateShape = {
   inFlight: null,
   usageReminders: [],
   resetMemory: {},
+  feedWatches: [],
+  seenEntries: [],
 };
 
 const statePath = join(config.runtime.repoPath, "state", "eousbot.json");
@@ -124,4 +143,36 @@ export function readResetMemory(): ResetMemory {
 
 export function saveResetMemory(resetMemory: ResetMemory): void {
   write({ ...read(), resetMemory });
+}
+
+export function readFeedWatches(): FeedWatch[] {
+  return read().feedWatches;
+}
+
+/** Adds the watch, or replaces the existing one for the same keyword. */
+export function upsertFeedWatch(watch: FeedWatch): void {
+  const current = read();
+  const key = watch.keyword.toLowerCase();
+  write({
+    ...current,
+    feedWatches: [...current.feedWatches.filter((w) => w.keyword.toLowerCase() !== key), watch],
+  });
+}
+
+/** Reports whether anything was actually removed, so the reply can say so. */
+export function removeFeedWatch(keyword: string): boolean {
+  const current = read();
+  const key = keyword.toLowerCase();
+  const remaining = current.feedWatches.filter((w) => w.keyword.toLowerCase() !== key);
+  if (remaining.length === current.feedWatches.length) return false;
+  write({ ...current, feedWatches: remaining });
+  return true;
+}
+
+export function readSeenEntries(): string[] {
+  return read().seenEntries;
+}
+
+export function saveSeenEntries(seenEntries: string[]): void {
+  write({ ...read(), seenEntries });
 }

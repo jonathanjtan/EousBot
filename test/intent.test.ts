@@ -4,6 +4,12 @@ import { test } from "node:test";
 /**
  * The parser decides whether prose can cause a deploy, so the case that
  * matters most is the near-miss: approval words inside a change request.
+ *
+ * `chat` adds a second near-miss in the other direction: a question must not
+ * spend a build, and feedback must not be answered as small talk. The tests
+ * below pin both, and every pre-chat case above them still passes unchanged --
+ * which is the point of routing chat on positive evidence rather than making
+ * it the fall-through.
  */
 
 const { parseMentionIntent, stripMentions } = await import("../src/intent.ts");
@@ -103,4 +109,69 @@ test("feedback carries the stripped text through", () => {
     intent.kind === "revise" ? intent.feedback : "",
     "use a slash command instead of polling",
   );
+});
+
+test("a bare question is answered, not turned into a revision", () => {
+  const cases = [
+    "what's the weather in japan",
+    "who won the world series",
+    "why is the sky blue",
+    "how do i rebase onto main",
+    "explain how oauth works",
+    "tell me a joke",
+    "hey what is 2+2",
+    "can you explain what a monad is",
+    "is 17 prime?",
+  ];
+  for (const msg of cases) {
+    assert.equal(parseMentionIntent(`${MENTION} ${msg}`).kind, "chat", msg);
+  }
+});
+
+test("chat carries the stripped text through", () => {
+  const intent = parseMentionIntent(`${MENTION} what's the exchange rate for yen`);
+  assert.equal(intent.kind, "chat");
+  assert.equal(
+    intent.kind === "chat" ? intent.text : "",
+    "what's the exchange rate for yen",
+  );
+});
+
+test("an image is a question even with no caption", () => {
+  assert.equal(parseMentionIntent(MENTION, { hasImage: true }).kind, "chat");
+  assert.equal(parseMentionIntent(`${MENTION} what breed is this`, { hasImage: true }).kind, "chat");
+  // Without one, a bare mention still asks for help rather than guessing.
+  assert.equal(parseMentionIntent(MENTION).kind, "help");
+});
+
+test("feedback is never answered as chat", () => {
+  // Each of these could be read as conversation; none of them is.
+  const cases = [
+    "do this instead",
+    "use a slash command instead of polling",
+    "the reminder window should be configurable",
+    "implement it without the timer",
+    "drop the polling?",
+  ];
+  for (const msg of cases) {
+    assert.equal(parseMentionIntent(`${MENTION} ${msg}`).kind, "revise", msg);
+  }
+});
+
+test("PR context keeps a question on the review path", () => {
+  // "why" and "how" would otherwise route to chat. Naming a PR, or replying to
+  // one of the bot's own messages, says the message is about the code.
+  assert.equal(parseMentionIntent(`${MENTION} why did you add a timer to #11`).kind, "revise");
+  assert.equal(
+    parseMentionIntent(`${MENTION} why did you add a timer`, { replyingToBot: true }).kind,
+    "revise",
+  );
+});
+
+test("chat never displaces a build, an approval or a rejection", () => {
+  assert.equal(parseMentionIntent(`${MENTION} what's the weather`, { hasImage: true }).kind, "chat");
+  // ...but an image doesn't turn a deploy into a chat.
+  assert.equal(parseMentionIntent(`${MENTION} build #7`, { hasImage: true }).kind, "build");
+  assert.equal(parseMentionIntent(`${MENTION} lgtm`, { hasImage: true }).kind, "approve");
+  assert.equal(parseMentionIntent(`${MENTION} reject`, { hasImage: true }).kind, "reject");
 });

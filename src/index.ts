@@ -11,9 +11,11 @@ import {
   buildApprovalMessage,
   buildRevisionModal,
   closeApprovalButtons,
+  decodeAskCustomId,
   decodeCustomId,
 } from "./approval.js";
-import { commandsByName } from "./commands/index.js";
+import { handleAskModal } from "./commands/ask.js";
+import { commandsByName, messageCommandsByName } from "./commands/index.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -22,6 +24,7 @@ import { acquire, describe, held, release } from "./inflight.js";
 import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
+import { startFeedWatch } from "./feedwatch.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
 import { takeInterruptedWork, takePendingAnnouncement } from "./state.js";
 import { cachedRevisionRefusal, revisionRefusal } from "./usagegate.js";
@@ -37,6 +40,13 @@ import { startUsageResetWatch } from "./usagewatch.js";
  * unable to read the server's ordinary conversation -- which keeps it out of
  * privileged-intent review and means a stolen token still cannot scrape the
  * channel history.
+ *
+ * The cost of that choice is real and worth naming: any message that does not
+ * mention the bot arrives with `content` and `attachments` emptied, over the
+ * HTTP API as much as the gateway. Replying to someone's post and mentioning
+ * the bot therefore hands it your reply and nothing else. Pointing it at
+ * another message needs the context menu command in commands/ask.ts, which
+ * Discord exempts by name.
  */
 
 const client = new Client({
@@ -68,6 +78,9 @@ client.once(Events.ClientReady, async (ready) => {
   );
 
   startUsageResetWatch(client);
+  // Resumes the drop-feed relay behind /restock. No-op unless
+  // TARGET_RESTOCK_ENABLED is set.
+  startFeedWatch(client);
 
   await announcePendingDeploy(sha);
   await reportInterruptedWork();
@@ -169,7 +182,37 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       return;
     }
 
+    // The "Apps" entry on a right-clicked message. Routed apart from slash
+    // commands because Discord delivers it as its own interaction type, with
+    // the target message attached -- see commands/ask.ts for why that matters.
+    if (interaction.isMessageContextMenuCommand()) {
+      const command = messageCommandsByName.get(interaction.commandName);
+      if (!command) {
+        log.warn("Unknown message command", { name: interaction.commandName });
+        return;
+      }
+
+      if (command.adminOnly && !isAdmin(interaction.user.id)) {
+        await interaction.reply({
+          content: "That command is restricted to the bot's admins.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await command.execute(interaction);
+      return;
+    }
+
     if (interaction.isModalSubmit()) {
+      // Checked before the approval codec: the two use different prefixes, and
+      // `decodeCustomId` returning null for one of ours would silently drop it.
+      const askKey = decodeAskCustomId(interaction.customId);
+      if (askKey) {
+        await handleAskModal(interaction, askKey);
+        return;
+      }
+
       const target = decodeCustomId(interaction.customId);
       if (!target || target.action !== "revise") return;
 

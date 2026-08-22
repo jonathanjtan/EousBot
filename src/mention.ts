@@ -1,6 +1,7 @@
 import { EmbedBuilder, type Message } from "discord.js";
 import { buildApprovalMessage } from "./approval.js";
-import { isAdmin } from "./config.js";
+import { answer, downloadImages, imagesFrom, splitForDiscord } from "./chat.js";
+import { config, isAdmin } from "./config.js";
 import * as gh from "./github.js";
 import { acquire, describe, release } from "./inflight.js";
 import { parseMentionIntent } from "./intent.js";
@@ -16,14 +17,38 @@ import { buildFeature, revisePullRequest } from "./pipeline.js";
  * misreading there deploys code nobody agreed to. The confirmation shows what
  * was understood, so a wrong reading is visible before it costs anything.
  *
+ * A mention that is simply a question goes to chat.ts instead, which touches
+ * neither the repository nor GitHub. That path is still admin-only, for the
+ * reason in README.md: in hostAuth mode every answer is billed against the
+ * host account's Claude login, and an allowlist is the only thing bounding
+ * who can spend it. Opening it to the guild wants a real API key first.
+ *
  * Only messages that @mention the bot reach here, and Discord delivers their
  * content without the privileged MessageContent intent. The bot still cannot
  * read the server's ordinary conversation.
  */
 
+/**
+ * The message this one replies to, or null.
+ *
+ * Fetched once per mention and passed down, because two things now need it:
+ * resolving which PR feedback is about, and telling the parser that a message
+ * is part of a review thread at all. A deleted or unreachable parent is not an
+ * error -- both callers have a sensible answer without one.
+ */
+async function fetchReplyParent(message: Message): Promise<Message | null> {
+  if (!message.reference?.messageId) return null;
+  try {
+    return await message.channel.messages.fetch(message.reference.messageId);
+  } catch {
+    return null;
+  }
+}
+
 /** Finds the PR a message is about: an explicit number, a reply, or the only one open. */
 async function resolveTargetPr(
   message: Message,
+  replyParent: Message | null,
   text: string,
 ): Promise<{ number: number } | { error: string }> {
   // "#11" or "pr 11" wins, since it is unambiguous.
@@ -35,16 +60,11 @@ async function resolveTargetPr(
 
   // Replying to one of the bot's approval embeds is the natural way to say
   // "this one" when several are open.
-  if (message.reference?.messageId) {
-    try {
-      const referenced = await message.channel.messages.fetch(message.reference.messageId);
-      const fromEmbed = referenced.embeds[0]?.title?.match(/PR #(\d+)/);
-      if (fromEmbed?.[1]) return { number: Number(fromEmbed[1]) };
-      const fromContent = referenced.content.match(/PR #(\d+)/);
-      if (fromContent?.[1]) return { number: Number(fromContent[1]) };
-    } catch {
-      // A deleted or unreachable parent just falls through to the open-PR check.
-    }
+  if (replyParent) {
+    const fromEmbed = replyParent.embeds[0]?.title?.match(/PR #(\d+)/);
+    if (fromEmbed?.[1]) return { number: Number(fromEmbed[1]) };
+    const fromContent = replyParent.content.match(/PR #(\d+)/);
+    if (fromContent?.[1]) return { number: Number(fromContent[1]) };
   }
 
   const open = await gh.listOpenPullRequests();
@@ -70,10 +90,24 @@ export async function handleMention(message: Message): Promise<void> {
     return;
   }
 
-  const intent = parseMentionIntent(message.content);
+  const replyParent = await fetchReplyParent(message);
+  const intent = parseMentionIntent(message.content, {
+    // Replying to something the bot said is nearly always a review thread, and
+    // it is the signal that keeps unadorned feedback ("do it the other way")
+    // from being read as small talk.
+    replyingToBot: replyParent?.author.id === message.client.user.id,
+    hasImage: imagesFrom(message.attachments.values()).length > 0,
+  });
 
   if (intent.kind === "help") {
     await message.reply({ embeds: [helpEmbed()] });
+    return;
+  }
+
+  // Answering costs a reply and nothing else, so it neither takes the inflight
+  // lock nor waits for one -- a question during a build is still just a question.
+  if (intent.kind === "chat") {
+    await runChat(message, intent.text);
     return;
   }
 
@@ -85,7 +119,7 @@ export async function handleMention(message: Message): Promise<void> {
   }
 
   const text = intent.kind === "revise" ? intent.feedback : intent.kind === "reject" ? intent.reason : "";
-  const target = await resolveTargetPr(message, text || message.content);
+  const target = await resolveTargetPr(message, replyParent, text || message.content);
 
   if ("error" in target) {
     await message.reply(target.error);
@@ -123,6 +157,69 @@ export async function handleMention(message: Message): Promise<void> {
   // Revisions run directly: the output is another reviewable PR, so the
   // existing gate still stands between this and anything shipping.
   await runRevision(message, target.number, intent.feedback);
+}
+
+/**
+ * One question in flight per person.
+ *
+ * Not the inflight lock -- that one serialises the whole bot, and a chat has
+ * no reason to block a build or be blocked by one. This is narrower: it stops
+ * an impatient double-ping from paying for the same answer twice, and stops a
+ * mention loop with another bot from opening runs without limit.
+ */
+const chatting = new Set<string>();
+
+async function runChat(message: Message, text: string): Promise<void> {
+  if (!config.chat.enabled) {
+    await message.reply(
+      "I'm not set up to answer questions — `CHAT_ENABLED` is off. " +
+        "`/claude`, `/revise` and `/status` still work.",
+    );
+    return;
+  }
+
+  if (chatting.has(message.author.id)) {
+    await message.reply("Still working on your last one — give me a second.");
+    return;
+  }
+  chatting.add(message.author.id);
+
+  // The typing indicator rather than a placeholder message: an answer takes
+  // seconds, and a "thinking…" message that gets edited afterwards reads worse
+  // than the signal Discord already has for exactly this. It expires after
+  // ten seconds, hence the refresh.
+  const type = () => {
+    if ("sendTyping" in message.channel) message.channel.sendTyping().catch(() => undefined);
+  };
+  type();
+  const typing = setInterval(type, 8000);
+
+  try {
+    const { images, skipped } = await downloadImages(imagesFrom(message.attachments.values()));
+    const result = await answer({ text, images, askedBy: message.author.username });
+    clearInterval(typing);
+
+    if (!result.ok) {
+      await message.reply(`I couldn't answer that — ${result.error.slice(0, 400)}`);
+      return;
+    }
+
+    // Skips are appended rather than sent first: the answer is what was asked
+    // for, and "I ignored your HEIC" is a footnote to it.
+    const note = skipped.length > 0 ? `\n\n-# Couldn't read: ${skipped.join(", ")}` : "";
+
+    let last = message;
+    for (const chunk of splitForDiscord(result.reply + note)) {
+      last = await last.reply(chunk);
+    }
+  } catch (err) {
+    clearInterval(typing);
+    log.error("Chat handler threw", { err: String(err) });
+    await message.reply("That question broke something. Check my logs.").catch(() => undefined);
+  } finally {
+    clearInterval(typing);
+    chatting.delete(message.author.id);
+  }
 }
 
 async function runBuild(message: Message, issueNumber: number): Promise<void> {
@@ -305,11 +402,14 @@ function helpEmbed(): EmbedBuilder {
         "• **“do X instead”** / **“drop the polling, use a command”** — I revise the PR",
         "• **“looks good, ship it”** — I'll ask you to confirm, then deploy",
         "• **“reject that”** — I'll ask you to confirm, then close it",
+        "• **“what's the weather in Osaka?”** / a photo — I just answer",
         "",
         "I'll use the only open PR, or the one you reply to, or name it like `#11`.",
         "",
-        "Anything ambiguous I treat as feedback rather than approval, since that's",
-        "the reversible one. Approving and rejecting always want a button.",
+        "A question gets answered; anything else is treated as feedback rather than",
+        "approval, since that's the reversible one. If feedback keeps reading as a",
+        "question, reply to my review message and it won't. Approving and rejecting",
+        "always want a button.",
       ].join("\n"),
     )
     .setFooter({ text: "The slash commands all still work: /claude /revise /status" });

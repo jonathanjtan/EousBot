@@ -18,6 +18,30 @@ import {
 
 const PREFIX = "eous";
 
+/**
+ * A second custom-ID namespace, for the "Ask EousBot" modal.
+ *
+ * Distinct from PREFIX so `decodeCustomId` and `decodeAskCustomId` each return
+ * null for the other's IDs rather than half-parsing them. The payload is one
+ * interaction ID -- what it points at lives in memory, because the message a
+ * context menu was used on cannot be re-fetched. See commands/ask.ts.
+ */
+const ASK_PREFIX = "ask";
+
+/** Field id inside the ask modal. */
+export const QUESTION_INPUT_ID = "question";
+
+export function encodeAskCustomId(interactionId: string): string {
+  return `${ASK_PREFIX}:${interactionId}`;
+}
+
+/** The stash key inside a modal's custom ID, or null if it isn't one of ours. */
+export function decodeAskCustomId(customId: string): string | null {
+  const [prefix, key, extra] = customId.split(":");
+  if (prefix !== ASK_PREFIX || !key || extra !== undefined) return null;
+  return /^\d+$/.test(key) ? key : null;
+}
+
 export type ApprovalAction = "approve" | "reject" | "revise";
 
 /** Field id inside the revision modal. */
@@ -165,6 +189,25 @@ export function buildRevisionModal(prNumber: number, issueNumber: number | null)
           )
           .setRequired(true)
           .setMaxLength(2000),
+      ),
+    );
+}
+
+export function buildAskModal(interactionId: string, aboutAuthor: string): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(encodeAskCustomId(interactionId))
+    .setTitle(`Ask about ${aboutAuthor}'s message`.slice(0, 45))
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(QUESTION_INPUT_ID)
+          .setLabel("What do you want to know?")
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder("e.g. what breed is this? — or leave blank and I'll just describe it")
+          // Optional: pointing at a photo and saying nothing is a complete
+          // request on its own, and the agent is told what to do with it.
+          .setRequired(false)
+          .setMaxLength(1000),
       ),
     );
 }

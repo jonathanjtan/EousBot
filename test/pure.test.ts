@@ -10,7 +10,9 @@ import { test } from "node:test";
  */
 
 const { branchNameFor } = await import("../src/naming.ts");
-const { encodeCustomId, decodeCustomId } = await import("../src/approval.ts");
+const { encodeCustomId, decodeCustomId, encodeAskCustomId, decodeAskCustomId } = await import(
+  "../src/approval.ts"
+);
 const {
   CHOICE_LIMITS,
   DEFAULT_EFFORT,
@@ -99,5 +101,29 @@ test("decodeCustomId rejects anything it did not mint", () => {
     "totally unrelated button",
   ]) {
     assert.equal(decodeCustomId(bad), null, `should reject ${JSON.stringify(bad)}`);
+  }
+});
+
+test("the ask codec round-trips an interaction id", () => {
+  const id = "1401234567890123456";
+  assert.equal(decodeAskCustomId(encodeAskCustomId(id)), id);
+  assert.ok(encodeAskCustomId(id).length <= 100, "must fit Discord's custom ID limit");
+});
+
+test("the two custom-ID namespaces never claim each other's IDs", () => {
+  // Both decoders run against every modal submit, so each must reject the
+  // other's IDs outright rather than half-parsing one.
+  const approval = encodeCustomId({ action: "revise", prNumber: 11, issueNumber: 4 });
+  const ask = encodeAskCustomId("1401234567890123456");
+
+  assert.equal(decodeAskCustomId(approval), null);
+  assert.equal(decodeCustomId(ask), null);
+  assert.notEqual(decodeCustomId(approval), null);
+  assert.notEqual(decodeAskCustomId(ask), null);
+});
+
+test("the ask codec rejects malformed IDs rather than guessing", () => {
+  for (const bad of ["ask:", "ask", "", "ask:abc", "ask:123:456", "eous:approve:1:2", "asky:123"]) {
+    assert.equal(decodeAskCustomId(bad), null, bad);
   }
 });

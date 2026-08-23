@@ -9,9 +9,26 @@
  * toward `revise`, which is the reversible outcome, and approval is confirmed
  * with a button rather than taken from prose.
  *
- * `chat` is the one branch that leads nowhere near the repository: it answers
- * a question and stops. Because it cannot cost anything but a reply, it is
- * allowed to win ahead of the revision markers -- see the ordering below.
+ * `chat` is now the default, and the rest are the special cases. That is a
+ * reversal, and it was earned: while chat had two web tools the fall-through
+ * was `revise`, which meant "fetch me the latest threads off /vt/" resolved to
+ * a pull request and answered "there are no open pull requests to act on".
+ * Five of six ordinary requests misrouted that way.
+ *
+ * Two causes, both fixed here. The fall-through was backwards for a bot whose
+ * main job is now answering; and REVISION_MARKERS is a list of ordinary
+ * English verbs -- add, use, change, remove, move -- that collide with almost
+ * any task someone would ask for. "add subtitles to this clip" is not feedback
+ * on a pull request.
+ *
+ * So the review path now requires *positive evidence* that a pull request is
+ * involved: a reply to one of the bot's own review messages, an explicit `#11`,
+ * or approve/reject vocabulary that means nothing outside a review. Absent
+ * that, it is a request, and the agent handles it. The cost asymmetry points
+ * this way too: reading a task as feedback spends a build and opens a pull
+ * request nobody wanted, while reading feedback as a task costs one retype.
+ * The PR workflow keeps three unambiguous entrances -- the Request changes
+ * button, `/revise`, and replying to the review embed.
  */
 
 export type MentionIntent =
@@ -27,8 +44,15 @@ export type MentionIntent =
  * than a discord.js Message, so this module stays import-free.
  */
 export interface MentionContext {
-  /** The message replies to one of the bot's own -- nearly always a review embed. */
-  replyingToBot?: boolean;
+  /**
+   * The message replies to one of the bot's *review* messages -- one naming a
+   * PR, not merely one the bot sent.
+   *
+   * The distinction matters now that the bot holds conversations: replying to
+   * an answer to ask a follow-up is the most natural thing there is, and
+   * treating every reply as review context sent those to the revision path.
+   */
+  replyingToReview?: boolean;
   /** The message carries at least one image attachment. */
   hasImage?: boolean;
 }
@@ -51,29 +75,6 @@ const HELP_PATTERNS = /^(help|\?+|what can you do|commands)$/i;
 
 /** Anything that ties a message to a pull request rather than to a topic. */
 const PR_REFERENCE = /#\d+|\bpr\s+\d+/i;
-
-/** Conversational lead-ins, stripped before the openers below are tested. */
-const FILLER = "(?:(?:hey|hi|hello|yo|ok|okay|so|um|uh|quick question|question)[,:\\s]+)*";
-
-/**
- * Openers that mark a message as a question put *to* the bot rather than an
- * instruction *about* its code.
- *
- * Only unambiguous interrogatives and requests for information are listed.
- * Bare modals are deliberately absent: "can you rename the module" is a
- * revision and "can you tell me the exchange rate" is a question, so the modal
- * qualifies only when an information verb follows it.
- */
-const QUESTION_OPENERS = new RegExp(
-  "^" +
-    FILLER +
-    "(?:" +
-    "(?:can|could|would|will)\\s+you\\s+(?:tell|explain|describe|define|translate|summari[sz]e|identify|list|name)\\b" +
-    "|(?:what|whats|who|whose|whom|where|when|why|which|how)\\b" +
-    "|(?:tell me|explain|describe|define|translate|summari[sz]e|identify)\\b" +
-    ")",
-  "i",
-);
 
 /**
  * "work on #16" -- asking for a build of an open feature request.
@@ -111,38 +112,30 @@ export function parseMentionIntent(
   const build = text.match(BUILD_PATTERNS);
   if (build?.[1]) return { kind: "build", issueNumber: Number(build[1]) };
 
-  // Whether the message concerns a pull request at all. Approval and rejection
+  // Positive evidence that a pull request is involved. Approval and rejection
   // words count on their own: neither has any meaning outside a review, so a
   // message carrying one is about a PR even when it names no number.
   const aboutPr =
-    context.replyingToBot === true ||
+    context.replyingToReview === true ||
     PR_REFERENCE.test(text) ||
     APPROVE_PATTERNS.test(text) ||
     REJECT_PATTERNS.test(text);
 
-  if (!aboutPr) {
-    // Both of these beat the revision markers, because a question that happens
-    // to contain one ("can you explain why X") is still a question, and the
-    // cost of getting it wrong runs the other way here: reading chat as a
-    // revision spends a build and opens a pull request nobody wanted, while
-    // reading a revision as chat costs one reply and a retype.
-    if (context.hasImage) return { kind: "chat", text };
-    if (QUESTION_OPENERS.test(text)) return { kind: "chat", text };
+  // No evidence, so it is a request rather than feedback. This is the common
+  // case and the reason the parser exists in this shape -- see the note above.
+  if (!aboutPr) return { kind: "chat", text };
 
-    // A trailing question mark is weaker evidence -- "drop the polling?" is
-    // feedback -- so it yields to the markers rather than beating them.
-    if (text.endsWith("?") && !REVISION_MARKERS.test(text)) return { kind: "chat", text };
-  }
-
-  // Checked before approval, on purpose: an approval word inside a change request must
-  // not win. Failing toward `revise` costs a build; failing toward `approve`
-  // costs a deploy of something nobody agreed to.
+  // Below here the message is about a pull request, and the original ordering
+  // applies unchanged: revision markers are checked before approval words, so
+  // an approval word inside a change request cannot win. Failing toward
+  // `revise` costs a build; failing toward `approve` deploys something nobody
+  // agreed to.
   if (REVISION_MARKERS.test(text)) return { kind: "revise", feedback: text };
 
   if (APPROVE_PATTERNS.test(text)) return { kind: "approve" };
   if (REJECT_PATTERNS.test(text)) return { kind: "reject", reason: text };
 
-  // Substantive text that matched nothing is far more likely to be a change
-  // request than anything else, and revise is the safe default.
+  // Named a PR but said nothing classifiable about it. Feedback is the safe
+  // reading: it is the reversible one, and approval still wants a button.
   return { kind: "revise", feedback: text };
 }

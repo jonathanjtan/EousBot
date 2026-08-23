@@ -46,10 +46,27 @@ async function fetchReplyParent(message: Message): Promise<Message | null> {
   }
 }
 
+/**
+ * The PR a message of the bot's is about, if it is a review message at all.
+ *
+ * "A reply to the bot" is not the same as "a reply about a pull request", and
+ * conflating them routed chat follow-ups -- replying to an answer to ask
+ * another question -- straight into the revision path. Only a message naming a
+ * PR counts as review context.
+ */
+function reviewedPrNumber(message: Message | null): number | null {
+  if (!message) return null;
+  const fromEmbed = message.embeds[0]?.title?.match(/PR #(\d+)/);
+  if (fromEmbed?.[1]) return Number(fromEmbed[1]);
+  const fromContent = message.content.match(/PR #(\d+)/);
+  if (fromContent?.[1]) return Number(fromContent[1]);
+  return null;
+}
+
 /** Finds the PR a message is about: an explicit number, a reply, or the only one open. */
 async function resolveTargetPr(
   message: Message,
-  replyParent: Message | null,
+  reviewPr: number | null,
   text: string,
 ): Promise<{ number: number } | { error: string }> {
   // "#11" or "pr 11" wins, since it is unambiguous.
@@ -61,12 +78,7 @@ async function resolveTargetPr(
 
   // Replying to one of the bot's approval embeds is the natural way to say
   // "this one" when several are open.
-  if (replyParent) {
-    const fromEmbed = replyParent.embeds[0]?.title?.match(/PR #(\d+)/);
-    if (fromEmbed?.[1]) return { number: Number(fromEmbed[1]) };
-    const fromContent = replyParent.content.match(/PR #(\d+)/);
-    if (fromContent?.[1]) return { number: Number(fromContent[1]) };
-  }
+  if (reviewPr !== null) return { number: reviewPr };
 
   const open = await gh.listOpenPullRequests();
   if (open.length === 1 && open[0]) return { number: open[0].number };
@@ -92,11 +104,13 @@ export async function handleMention(message: Message): Promise<void> {
   }
 
   const replyParent = await fetchReplyParent(message);
+  const reviewPr =
+    replyParent?.author.id === message.client.user.id ? reviewedPrNumber(replyParent) : null;
+
   const intent = parseMentionIntent(message.content, {
-    // Replying to something the bot said is nearly always a review thread, and
-    // it is the signal that keeps unadorned feedback ("do it the other way")
-    // from being read as small talk.
-    replyingToBot: replyParent?.author.id === message.client.user.id,
+    // Only a reply to a *review* message counts. Replying to one of the bot's
+    // answers is how a conversation continues, not how a PR gets revised.
+    replyingToReview: reviewPr !== null,
     hasImage: imagesFrom(message.attachments.values()).length > 0,
   });
 
@@ -120,9 +134,17 @@ export async function handleMention(message: Message): Promise<void> {
   }
 
   const text = intent.kind === "revise" ? intent.feedback : intent.kind === "reject" ? intent.reason : "";
-  const target = await resolveTargetPr(message, replyParent, text || message.content);
+  const target = await resolveTargetPr(message, reviewPr, text || message.content);
 
   if ("error" in target) {
+    // A revision with no pull request to revise is not an error, it is a
+    // misread: the parser saw PR-ish wording where the user meant a request.
+    // Answering is both more useful and cheaper than refusing. Approving and
+    // rejecting still refuse, since neither means anything without a PR.
+    if (intent.kind === "revise") {
+      await runChat(message, intent.feedback);
+      return;
+    }
     await message.reply(target.error);
     return;
   }
@@ -423,14 +445,13 @@ function helpEmbed(): EmbedBuilder {
         "• **“do X instead”** / **“drop the polling, use a command”** — I revise the PR",
         "• **“looks good, ship it”** — I'll ask you to confirm, then deploy",
         "• **“reject that”** — I'll ask you to confirm, then close it",
-        "• **“what's the weather in Osaka?”** / a photo — I just answer",
+        "• **anything else** — “fetch the latest /vt/ threads”, “make these a collage”,",
+        "  “what's the weather in Osaka?”, a photo — I just do it",
         "",
-        "I'll use the only open PR, or the one you reply to, or name it like `#11`.",
-        "",
-        "A question gets answered; anything else is treated as feedback rather than",
-        "approval, since that's the reversible one. If feedback keeps reading as a",
-        "question, reply to my review message and it won't. Approving and rejecting",
-        "always want a button.",
+        "**Anything that isn't clearly about a PR is a request I'll act on.** To give",
+        "feedback instead, reply to my review message or name it like `#11` — that's",
+        "what tells me a pull request is involved. Approving and rejecting always",
+        "want a button.",
       ].join("\n"),
     )
     .setFooter({ text: "The slash commands all still work: /claude /revise /status" });

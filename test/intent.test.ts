@@ -89,21 +89,31 @@ test("rejection reads as reject", () => {
 });
 
 test("the user's own examples route correctly", () => {
-  assert.equal(parseMentionIntent(`${MENTION} hey do this instead`).kind, "revise");
+  // Feedback needs a PR in scope to read as feedback; the reply is how you say
+  // which one. Without that it is just a request, and the agent takes it.
+  assert.equal(
+    parseMentionIntent(`${MENTION} hey do this instead`, { replyingToReview: true }).kind,
+    "revise",
+  );
+  assert.equal(parseMentionIntent(`${MENTION} hey do this instead`).kind, "chat");
   assert.equal(parseMentionIntent(`${MENTION} looks good, ship it`).kind, "approve");
 });
 
-test("unrecognised prose falls back to revise, never to approve", () => {
-  const intent = parseMentionIntent(`${MENTION} the reminder window should be configurable`);
-  assert.equal(intent.kind, "revise");
-  assert.equal(
-    intent.kind === "revise" ? intent.feedback : "",
-    "the reminder window should be configurable",
-  );
+test("unrecognised prose never falls back to approve", () => {
+  // The safety property that has not moved: nothing ambiguous ever deploys.
+  for (const ctx of [{}, { replyingToReview: true }]) {
+    const intent = parseMentionIntent(
+      `${MENTION} the reminder window should be configurable`,
+      ctx,
+    );
+    assert.notEqual(intent.kind, "approve");
+  }
 });
 
 test("feedback carries the stripped text through", () => {
-  const intent = parseMentionIntent(`${MENTION} use a slash command instead of polling`);
+  const intent = parseMentionIntent(`${MENTION} use a slash command instead of polling`, {
+    replyingToReview: true,
+  });
   assert.equal(intent.kind, "revise");
   assert.equal(
     intent.kind === "revise" ? intent.feedback : "",
@@ -144,8 +154,7 @@ test("an image is a question even with no caption", () => {
   assert.equal(parseMentionIntent(MENTION).kind, "help");
 });
 
-test("feedback is never answered as chat", () => {
-  // Each of these could be read as conversation; none of them is.
+test("feedback in PR context is still feedback", () => {
   const cases = [
     "do this instead",
     "use a slash command instead of polling",
@@ -154,18 +163,48 @@ test("feedback is never answered as chat", () => {
     "drop the polling?",
   ];
   for (const msg of cases) {
-    assert.equal(parseMentionIntent(`${MENTION} ${msg}`).kind, "revise", msg);
+    assert.equal(
+      parseMentionIntent(`${MENTION} ${msg}`, { replyingToReview: true }).kind,
+      "revise",
+      msg,
+    );
+  }
+});
+
+test("ordinary requests are not mistaken for pull request feedback", () => {
+  // The regression this reversal fixes. Every one of these read as `revise`
+  // before, because the fall-through was revise and REVISION_MARKERS is a list
+  // of ordinary verbs -- "add", "use", "make it" -- that any task contains.
+  const cases = [
+    "fetch me the latest hakos baelz threads off /vt/",
+    "download that video",
+    "make me a collage of these",
+    "add subtitles to this clip",
+    "find the top posts today",
+    "use ffmpeg to trim the first 10 seconds",
+    "remove the background from this image",
+    "change this to a webp",
+  ];
+  for (const msg of cases) {
+    assert.equal(parseMentionIntent(`${MENTION} ${msg}`).kind, "chat", msg);
   }
 });
 
 test("PR context keeps a question on the review path", () => {
-  // "why" and "how" would otherwise route to chat. Naming a PR, or replying to
-  // one of the bot's own messages, says the message is about the code.
+  // Naming a PR, or replying to one of the bot's review messages, says the
+  // message is about the code rather than a request of its own.
   assert.equal(parseMentionIntent(`${MENTION} why did you add a timer to #11`).kind, "revise");
   assert.equal(
-    parseMentionIntent(`${MENTION} why did you add a timer`, { replyingToBot: true }).kind,
+    parseMentionIntent(`${MENTION} why did you add a timer`, { replyingToReview: true }).kind,
     "revise",
   );
+});
+
+test("replying to a chat answer does not become a revision", () => {
+  // A reply to the bot is only review context when the bot was reviewing. This
+  // is what makes a conversational follow-up possible at all.
+  assert.equal(parseMentionIntent(`${MENTION} now crop it`, { replyingToReview: false }).kind, "chat");
+  assert.equal(parseMentionIntent(`${MENTION} do the other one instead`).kind, "chat");
 });
 
 test("chat never displaces a build, an approval or a rejection", () => {

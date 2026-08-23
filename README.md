@@ -284,15 +284,26 @@ with the closing tag neutralised so it can't break out of its own fence. It is
 someone else's writing, delivered to an agent, which is exactly the shape
 prompt injection takes.
 
-Routing is on positive evidence rather than fallthrough. A question opener
-("what", "why", "how", "tell me", "explain", "can you explain…"), an attached
-image, or a trailing `?` with no change-request marker in the message routes to
-chat; everything else stays on the review path exactly as before. The
-asymmetry is deliberate — misreading a question as feedback spends a build and
-opens a PR nobody wanted, while misreading feedback as a question costs one
-reply and a retype. If a piece of feedback keeps getting answered instead of
-acted on, reply to the bot's review message: a reply to its own message is
-treated as PR context and never routes to chat.
+**Chat is the fall-through; the review path requires positive evidence.** That
+is the reverse of how this first shipped, and the reversal was earned: with
+`revise` as the default, "fetch me the latest threads off /vt/" resolved to a
+pull request and answered *"there are no open pull requests to act on"*. Five
+of six ordinary requests misrouted that way — partly the fall-through, partly
+because `REVISION_MARKERS` is a list of ordinary English verbs (`add`, `use`,
+`change`, `remove`) that collide with almost any task. "add subtitles to this
+clip" is not feedback on a pull request.
+
+A message reaches the review path only via a reply to one of the bot's *review*
+messages, an explicit `#11`, or approve/reject vocabulary that means nothing
+outside a review. Note "review messages", not "the bot's messages" — replying
+to an answer is how a conversation continues, and treating that as PR context
+sent every follow-up to the revision agent.
+
+The cost asymmetry points the same way: reading a task as feedback spends a
+build and opens a PR nobody wanted; reading feedback as a task costs a retype.
+And if the parser does pick `revise` when no PR can be resolved, the mention
+handler answers it as chat rather than refusing — a revision with nothing to
+revise is a misread, not an error.
 
 Chat takes no inflight lock, so a question during a build is just a question.
 It is serialised per person instead, so a double-ping can't pay twice.

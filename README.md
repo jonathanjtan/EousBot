@@ -229,9 +229,18 @@ correctly reported it couldn't, which is what no Claude Code session would ever
 say. Building a bespoke tool per request is a losing race.
 
 The channel is the conversation: a follow-up resumes the same session and finds
-the same workspace, so "now crop it" means something. `/stop` reaches a chat run
-via its own slot in `src/running.ts`, kept separate so a question asked
-mid-build can't overwrite the build's handle and leave it unstoppable.
+the same workspace, so "now crop it" means something. It takes an explicit
+`@` — replying to the bot pings it, and treating that as a fresh question meant
+every reply to an answer started one. `/stop` reaches a chat run via its own
+slot in `src/running.ts`, kept separate so a question asked mid-build can't
+overwrite the build's handle and leave it unstoppable.
+
+Resuming replays the whole transcript on every turn, so a session left to grow
+is a bill that grows with it, and the idle TTL never fires in a channel that
+keeps talking. Sessions therefore roll over at `CHAT_SESSION_MAX_TURNS` or
+`CHAT_SESSION_MAX_AGE_MS`, whichever comes first, keeping the workspace and its
+files. `/chat status` shows what a channel is carrying, `/chat reset` drops it,
+and `/chat model` / `/chat effort` set per-channel overrides.
 
 **What actually bounds this agent:**
 
@@ -495,6 +504,7 @@ src/
   agent.ts        Claude Agent SDK wrapper and its system prompt
   chat.ts         Claude Code in a scratch workspace, reachable from Discord
   commands/ask.ts "Ask EousBot" on a right-clicked message
+  unslop.ts       house style, injected into the chat system prompt
   intent.ts       reading intent from a mention (no imports, so tests are cheap)
   mention.ts      the @mention entry point: chat, build, revise, approve
   pipeline.ts     worktree → agent → typecheck → test → PR

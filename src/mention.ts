@@ -122,7 +122,7 @@ export async function handleMention(message: Message): Promise<void> {
   // Answering costs a reply and nothing else, so it neither takes the inflight
   // lock nor waits for one -- a question during a build is still just a question.
   if (intent.kind === "chat") {
-    await runChat(message, intent.text);
+    await runChat(message, intent.text, replyParent);
     return;
   }
 
@@ -142,7 +142,7 @@ export async function handleMention(message: Message): Promise<void> {
     // Answering is both more useful and cheaper than refusing. Approving and
     // rejecting still refuse, since neither means anything without a PR.
     if (intent.kind === "revise") {
-      await runChat(message, intent.feedback);
+      await runChat(message, intent.feedback, replyParent);
       return;
     }
     await message.reply(target.error);
@@ -197,7 +197,11 @@ function attachments(files: OutputFile[]) {
  */
 const chatting = new Set<string>();
 
-async function runChat(message: Message, text: string): Promise<void> {
+async function runChat(
+  message: Message,
+  text: string,
+  replyParent: Message | null = null,
+): Promise<void> {
   if (!config.chat.enabled) {
     await message.reply(
       "I'm not set up to answer questions — `CHAT_ENABLED` is off. " +
@@ -223,10 +227,27 @@ async function runChat(message: Message, text: string): Promise<void> {
   const typing = setInterval(type, 8000);
 
   try {
-    const { images, skipped } = await downloadImages(imagesFrom(message.attachments.values()));
+    // The replied-to message counts as part of the question. Own attachments
+    // lead, so a budget shared with the parent spends on what was just sent.
+    const parentImages = replyParent ? imagesFrom(replyParent.attachments.values()) : [];
+    const { images, skipped } = await downloadImages([
+      ...imagesFrom(message.attachments.values()),
+      ...parentImages,
+    ]);
+
     const result = await answer({
       text,
       images,
+      quoted: replyParent
+        ? {
+            author: replyParent.author.username,
+            text: replyParent.content,
+            // Content and attachments both empty is the signature of the
+            // privileged intent, not of an empty message. A human never sends
+            // one of those; Discord manufactures them constantly.
+            unreadable: !replyParent.content.trim() && parentImages.length === 0,
+          }
+        : null,
       askedBy: message.author.username,
       // The channel is the conversation: a follow-up resumes the same session
       // and finds the same workspace, so "now crop it" means something.

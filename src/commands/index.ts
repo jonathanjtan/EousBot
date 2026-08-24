@@ -1,6 +1,7 @@
 import { command as ask } from "./ask.js";
 import { command as avatar } from "./avatar.js";
 import { command as bugcat } from "./bugcat.js";
+import { command as chat } from "./chat.js";
 import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
 import { command as embed } from "./embed.js";
@@ -47,6 +48,7 @@ export const commands: Command[] = [
   strip,
   embed,
   restock,
+  chat,
 ];
 
 export const commandsByName = new Map(commands.map((c) => [c.data.name, c]));

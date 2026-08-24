@@ -99,6 +99,11 @@ const schema = z.object({
   // Total bytes of agent-produced files attached to one reply. Discord's own
   // ceiling is 10MB on an unboosted guild; this stays under it.
   CHAT_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(8_000_000),
+  // Ceilings on one conversation, because resuming replays the whole
+  // transcript every turn. The idle TTL above never fires in a busy channel,
+  // so these are what actually bound the bill. /chat reset does it by hand.
+  CHAT_SESSION_MAX_TURNS: z.coerce.number().int().positive().default(20),
+  CHAT_SESSION_MAX_AGE_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
 
   // Optional. Derived from this module's own location by default -- see
   // defaultRepoPath below. Only set it if the checkout genuinely isn't the
@@ -247,6 +252,8 @@ export const config = {
     workspaceRoot: env.CHAT_WORKSPACE_ROOT,
     conversationTtlMs: env.CHAT_CONVERSATION_TTL_MS,
     maxUploadBytes: env.CHAT_MAX_UPLOAD_BYTES,
+    sessionMaxTurns: env.CHAT_SESSION_MAX_TURNS,
+    sessionMaxAgeMs: env.CHAT_SESSION_MAX_AGE_MS,
   },
   runtime: {
     repoPath,

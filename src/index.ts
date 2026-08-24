@@ -478,7 +478,10 @@ client.on(Events.MessageCreate, async (message) => {
   // Ignore other bots (and ourselves) unconditionally: a bot that answers bots
   // can be walked into a loop by anything that echoes mentions.
   if (message.author.bot) return;
-  if (!client.user || !message.mentions.has(client.user)) return;
+  // `ignoreRepliedUser` is the whole point: replying to the bot pings it, and
+  // without this every reply to one of its answers reads as a fresh question.
+  // Continuing a conversation should take an explicit @, same as starting one.
+  if (!client.user || !message.mentions.has(client.user, { ignoreRepliedUser: true })) return;
   // @everyone / @here sweep in a mention match; only a direct ping counts.
   if (message.mentions.everyone) return;
 

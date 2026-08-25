@@ -22,7 +22,12 @@ import {
   buildJoinModal,
   handleJoinModal,
 } from "./commands/idlerpg.js";
-import { decodeDuel, handleDuelButton } from "./commands/rpg.js";
+import {
+  decodeDuel,
+  decodeMarry,
+  handleDuelButton,
+  handleMarryButton,
+} from "./commands/rpg.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -441,6 +446,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const challenge = decodeDuel(interaction.customId);
       if (challenge) {
         await handleDuelButton(interaction, challenge);
+        return;
+      }
+
+      // Same reasoning: a proposal is only accepted by the person proposed to.
+      const proposal = decodeMarry(interaction.customId);
+      if (proposal) {
+        await handleMarryButton(interaction, proposal);
         return;
       }
 

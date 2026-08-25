@@ -1,4 +1,4 @@
-import type { ClassId, ItemKind, Rarity } from "./types.js";
+import type { ClassId, GodId, ItemKind, RaceId, Rarity } from "./types.js";
 
 /**
  * Everything the game is made of that isn't arithmetic: classes, their
@@ -197,4 +197,145 @@ export const LOSS_LINES: readonly string[] = [
   "lost the payment, the cart, and most of their dignity",
   "returned in the wrong order and without the important one",
   "found out why the last party did not come back",
+];
+
+// ------------------------------------------------------------------ races ---
+
+/**
+ * Race: the small half of who you are.
+ *
+ * Every race gives a percentage bonus to a different axis, and all of them are
+ * modest. A new player picks a class and a race in the same breath with no
+ * information about either, so exactly one of those choices is allowed to be
+ * load-bearing. Class is that one.
+ */
+export interface RaceDef {
+  id: RaceId;
+  summary: string;
+  /** Percent bonus to experience earned. */
+  xp: number;
+  /** Percent bonus to coin earned. */
+  money: number;
+  /** Percentage points added to adventure odds. */
+  odds: number;
+  /** Flat attack. */
+  attack: number;
+  /** Flat protection. */
+  defense: number;
+}
+
+export const RACES: Record<RaceId, RaceDef> = {
+  human: {
+    id: "human",
+    summary: "Adaptable and quick to learn. +8% experience.",
+    xp: 8,
+    money: 0,
+    odds: 0,
+    attack: 0,
+    defense: 0,
+  },
+  elf: {
+    id: "elf",
+    summary: "Reads the ground before walking on it. +4 points of adventure odds.",
+    xp: 0,
+    money: 0,
+    odds: 4,
+    attack: 0,
+    defense: 0,
+  },
+  dwarf: {
+    id: "dwarf",
+    summary: "Knows what things are worth. +10% coin.",
+    xp: 0,
+    money: 10,
+    odds: 0,
+    attack: 0,
+    defense: 0,
+  },
+  orc: {
+    id: "orc",
+    summary: "Hits first and considerably harder. +6 attack.",
+    xp: 0,
+    money: 0,
+    odds: 0,
+    attack: 6,
+    defense: 0,
+  },
+  revenant: {
+    id: "revenant",
+    summary: "Already died once and did not care for it. +6 protection.",
+    xp: 0,
+    money: 0,
+    odds: 0,
+    attack: 0,
+    defense: 6,
+  },
+};
+
+export const RACE_IDS = Object.keys(RACES) as RaceId[];
+
+// ------------------------------------------------------------------- gods ---
+
+/**
+ * Gods exist to give items a second use.
+ *
+ * Without them every drop you cannot wear is coin, and the only decision is
+ * how fast to sell. Sacrificing converts an item into favour instead, and
+ * favour buys better odds -- so a good drop in the wrong slot becomes a real
+ * choice rather than an automatic trip to the shop.
+ */
+export interface GodDef {
+  id: GodId;
+  title: string;
+  /** What following them is for. */
+  summary: string;
+}
+
+export const GODS: Record<GodId, GodDef> = {
+  harvest: {
+    id: "harvest",
+    title: "the Harvest",
+    summary: "Keeps count of what is owed and pays it back in season.",
+  },
+  forge: {
+    id: "forge",
+    title: "the Forge",
+    summary: "Believes anything can be repaired, including you.",
+  },
+  tide: {
+    id: "tide",
+    title: "the Tide",
+    summary: "Takes and returns on a schedule nobody has written down.",
+  },
+  ledger: {
+    id: "ledger",
+    title: "the Ledger",
+    summary: "Notices every coin. Has opinions about most of them.",
+  },
+  quiet: {
+    id: "quiet",
+    title: "the Quiet",
+    summary: "Asks for nothing and is therefore the most expensive.",
+  },
+  wheel: {
+    id: "wheel",
+    title: "the Wheel",
+    summary: "Does not care who you are, only which way you are facing.",
+  },
+};
+
+export const GOD_IDS = Object.keys(GODS) as GodId[];
+
+// ------------------------------------------------------------------ raids ---
+
+/** Boss names, drawn at random when a raid starts. */
+export const BOSS_NAMES: readonly string[] = [
+  "the Thing Under the Reservoir",
+  "the Tax Collector of Ash",
+  "Something Wearing the Duke",
+  "the Ninth Bell",
+  "the Drowned Choir",
+  "the Long Hunger",
+  "the Cartographer's Mistake",
+  "the Last Wolf of the Pass",
 ];

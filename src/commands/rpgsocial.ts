@@ -434,7 +434,7 @@ export async function handleRaid(interaction: I, sub: string): Promise<void> {
         "",
         ...(v.payouts ?? [])
           .slice(0, 15)
-          .map((p) => `**${name(p.userId)}** — ${p.damage.toLocaleString("en-US")} damage, ${coin(p.share)} and a crate`),
+          .map((p) => `**${name(p.userId)}**, ${p.damage.toLocaleString("en-US")} damage, ${coin(p.share)} and a crate`),
       ].join("\n"),
     });
   }
@@ -699,7 +699,7 @@ export async function handleArena(interaction: I, sub: string): Promise<void> {
     }
     await interaction.reply(
       [
-        `**Free-for-all** — buy-in ${coin(a.buyIn)}, pot ${coin(a.buyIn * a.entrantIds.length)}.`,
+        `Free-for-all. Buy-in ${coin(a.buyIn)}, pot ${coin(a.buyIn * a.entrantIds.length)}.`,
         `Entry closes <t:${Math.floor(a.closesAt / 1000)}:R>.`,
         "",
         `**${a.entrantIds.length} in:** ${a.entrantIds.map(name).join(", ")}`,
@@ -740,7 +740,7 @@ export async function handleArena(interaction: I, sub: string): Promise<void> {
     const body = v.arena.log.join("\n\n");
     await interaction.reply(
       [
-        `**The arena** — ${v.arena.entrantIds.length} in, ${coin(v.pot)} on the table.`,
+        `The arena. ${v.arena.entrantIds.length} in, ${coin(v.pot)} on the table.`,
         "",
         body.length > 1700 ? `…\n${body.slice(-1700)}` : body,
       ].join("\n"),
@@ -833,7 +833,7 @@ export async function handleEvent(interaction: I): Promise<void> {
 export function eventLine(now: number): string | null {
   const event = activeEvent(world(), now);
   if (!event) return null;
-  return `**${event.name}** — ${event.blurb} (ends <t:${Math.floor(event.endsAt / 1000)}:R>)`;
+  return `**${event.name}**, ${event.blurb} (ends <t:${Math.floor(event.endsAt / 1000)}:R>)`;
 }
 
 // ------------------------------------------------------------------ maths ---

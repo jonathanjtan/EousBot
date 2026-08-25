@@ -71,7 +71,7 @@ export function buildJoinPanel() {
     content: [
       "**Idle RPG**",
       "",
-      "You level up by doing nothing. No clicking, no grinding, no way to play well —",
+      "You level up by doing nothing. No clicking, no grinding, no way to play well ,",
       "time spent registered and quiet is the only thing that advances you. Levelling",
       "finds you an item and picks you a fight; everything else happens *to* you.",
       "",
@@ -133,7 +133,7 @@ function attemptRegister(userId: string, rawName: string, rawClass: string): str
 
   return [
     `**${result.player.name}**, the ${result.player.charClass}, has entered the realm.`,
-    `Level 1 in ${duration(result.player.next)} — provided you say nothing.`,
+    `Level 1 in ${duration(result.player.next)}, provided you say nothing.`,
     "",
     "_`/old-idlerpg help` explains what talking costs you._",
   ].join("\n");
@@ -153,7 +153,7 @@ export async function handleJoinModal(interaction: ModalSubmitInteraction): Prom
 
 
 const HELP = [
-  "**Idle RPG** — you level up by doing nothing.",
+  "**Idle RPG**, you level up by doing nothing.",
   "",
   "`/old-idlerpg register` makes a character, and from that moment your clock runs.",
   "There is no skill, no grinding and nothing to click: time spent logged in and",
@@ -161,13 +161,13 @@ const HELP = [
   "picks you a fight; the rest happens to you.",
   "",
   "**Not idling costs you.** Every message you send while logged in adds time to",
-  "your clock, and the penalty scales steeply with your level — a slip that costs",
+  "your clock, and the penalty scales steeply with your level. A slip that costs",
   "a beginner seconds costs a veteran hours. Logging out costs more. Abandoning a",
   "quest costs *everyone*.",
   "",
   "**Alignment** is the one real choice. Good fights 10% above its equipment and",
   "is occasionally rewarded in pairs. Evil fights 10% below, lands critical",
-  "strikes far more often, and gets to steal from the good — when its god is not",
+  "strikes far more often, and gets to steal from the good. When its god is not",
   "busy punishing it. Neutral does neither.",
   "",
   "**Items** are ten slots, and their sum is your entire combat statistic. Battles",
@@ -193,7 +193,7 @@ function resolve(name: string | null, userId: string): Player | string {
 export const command: Command = {
   data: new SlashCommandBuilder()
     .setName("old-idlerpg")
-    .setDescription("The 2004 IRC original — level up by doing absolutely nothing")
+    .setDescription("The 2004 IRC original. Level up by doing absolutely nothing")
     .addSubcommand((s) =>
       s
         .setName("register")
@@ -201,7 +201,7 @@ export const command: Command = {
         .addStringOption((o) =>
           o
             .setName("class")
-            .setDescription("Your class. Anything you like — it is pure flavour")
+            .setDescription("Your class. Anything you like. It is pure flavour")
             .setRequired(true)
             .setMaxLength(40),
         )

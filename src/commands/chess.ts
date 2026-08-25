@@ -69,7 +69,7 @@ export function decodeDrawOffer(
 }
 
 const HELP = [
-  "**Chess.** Real chess — every rule, including castling, en passant, promotion,",
+  "Real chess. Every rule, including castling, en passant, promotion,",
   "stalemate, the fifty-move rule and insufficient material.",
   "",
   "```",
@@ -82,9 +82,7 @@ const HELP = [
   "**Moves are coordinates**, not algebraic: name the square you are moving from",
   "and the square you are moving to. `e2e4`, `g1f3`, `e1g1` to castle.",
   "",
-  "Coordinate notation rather than `Nf3` on purpose — algebraic needs",
-  "disambiguation rules that are a second source of bugs, and nobody typing into",
-  "a Discord box benefits from writing `Nbd7` instead of `b8d7`.",
+  "Coordinates rather than `Nf3`, so there is nothing to disambiguate.",
   "",
   "**Promotion must say what it becomes:** `e7e8q` for a queen, or `n`, `r`, `b`.",
   "A bare `e7e8` is refused rather than silently queening, in case you wanted the",
@@ -170,7 +168,7 @@ async function doChallenge(interaction: I): Promise<void> {
 
   await interaction.reply({
     content:
-      `<@${target.id}> — **${interaction.user.username}** challenges you to chess` +
+      `<@${target.id}>, **${interaction.user.username}** challenges you to chess` +
       (stake > 0 ? ` for ${coin(stake)}` : "") +
       ".\n_They play white._",
     components: [
@@ -254,7 +252,7 @@ async function doDrawOffer(interaction: I): Promise<void> {
 
   const other = opponentOf(game, interaction.user.id);
   await interaction.reply({
-    content: `<@${other}> — **${interaction.user.username}** offers a draw.`,
+    content: `<@${other}>, **${interaction.user.username}** offers a draw.`,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()

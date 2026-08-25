@@ -68,7 +68,7 @@ export function followGod(
   const cost = character.god ? godSwitchCost(character) : 0;
   if (character.money < cost) {
     return no(
-      `Leaving ${GODS[character.god as GodId].title} costs ${coin(cost)} — half your favour, ` +
+      `Leaving ${GODS[character.god as GodId].title} costs ${coin(cost)}, half your favour, ` +
         `in coin. You have ${coin(character.money)}.`,
     );
   }

@@ -29,7 +29,7 @@ export function characterSheet(
   const penalties = player.penalties.message + player.penalties.logout + player.penalties.quest;
 
   const embed = new EmbedBuilder()
-    .setTitle(`${player.name} — level ${player.level} ${player.charClass}`)
+    .setTitle(`${player.name}, level ${player.level} ${player.charClass}`)
     .setColor(player.online ? 0x2ecc71 : 0x95a5a6)
     .addFields(
       {
@@ -66,7 +66,7 @@ export function itemList(player: Player): string {
   const rows = ITEM_SLOTS.map((slot) => {
     const item = player.items[slot];
     const level = item?.level ?? 0;
-    const name = item?.unique ? ` — *${item.unique}*` : "";
+    const name = item?.unique ? `, *${item.unique}*` : "";
     return `\`${String(level).padStart(4)}\` ${SLOT_NAMES[slot]}${name}`;
   });
   return [`**${player.name}**'s equipment (sum ${itemSum(player)}):`, ...rows].join("\n");
@@ -80,11 +80,11 @@ export function leaderboard(state: GameState, limit: number): string {
   if (ranked.length === 0) return "Nobody has registered yet. `/old-idlerpg register` starts a character.";
 
   return [
-    "**Idle RPG — the realm**",
+    "Idle RPG, the realm",
     ...ranked.map((p, i) => {
       const dot = p.online ? "🟢" : "⚫";
       return (
-        `\`${String(i + 1).padStart(2)}\` ${dot} **${p.name}** — level ${p.level} ` +
+        `\`${String(i + 1).padStart(2)}\` ${dot} **${p.name}**, level ${p.level} ` +
         `${p.charClass}, next in ${duration(p.next)}`
       );
     }),

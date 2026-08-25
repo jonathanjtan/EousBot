@@ -198,7 +198,7 @@ export function describeGame(
 
   return [
     `**${nameOf(game.whiteId)}** (white) vs **${nameOf(game.blackId)}** (black)` +
-      (game.stake > 0 ? ` — ${coin(game.stake)} on it` : ""),
+      (game.stake > 0 ? `, ${coin(game.stake)} on it` : ""),
     render(position, flipped),
     `**${nameOf(mover)}** to move${inCheck(position) ? ", and in check" : ""}.`,
   ].join("\n");

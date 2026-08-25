@@ -43,8 +43,7 @@ const ROLE_BRIEF: Record<WerewolfRole, string> = {
 };
 
 const HELP = [
-  "**Werewolf.** The village is trying to find the wolves before the wolves finish",
-  "the village.",
+  "The village is trying to find the wolves before the wolves finish the village.",
   "",
   "```",
   "/werewolf open · join · leave",
@@ -55,21 +54,19 @@ const HELP = [
   "/werewolf dusk               resolve the vote (host)",
   "/werewolf status · end",
   "```",
-  "**Roles.** Roughly a quarter are wolves. There is always a seer, and a guard",
-  "once there are six of you. Everyone else is a villager with a vote and an",
-  "opinion.",
+  "Roughly a quarter are wolves. There is always a seer, and a guard once there",
+  "are six of you. Everyone else is a villager with a vote.",
   "",
-  "`wolf` — agree with the pack each night on somebody to take. Majority decides;",
+  "`wolf`, agree with the pack each night on somebody to take. Majority decides;",
   "a split pack kills nobody.",
-  "`seer` — look at one person each night and learn what they are. You find out",
+  "`seer`, look at one person each night and learn what they are. You find out",
   "immediately, and privately.",
-  "`guard` — protect one person from the wolves each night. Not yourself.",
+  "`guard`, protect one person from the wolves each night. Not yourself.",
   "",
-  "**Phases advance when the host calls them**, not on a timer — a timed night",
-  "ends at 3am for whoever was asleep.",
+  "Phases advance when the host calls them, not on a timer.",
   "",
-  "**The wolves win at parity**, not majority: once they equal the village they",
-  "can never be out-voted, so playing on would be theatre.",
+  "The wolves win at parity, not majority. Once they equal the village they",
+  "cannot be out-voted.",
   "",
   "Five players minimum. Roles arrive by DM, so open yours to the bot first.",
 ].join("\n");
@@ -219,7 +216,7 @@ async function doStart(interaction: I): Promise<void> {
         `, and ${spread.villager} villager${spread.villager === 1 ? "" : "s"}.`,
       "Roles have been sent by DM. `/werewolf dawn` when everyone has acted.",
       ...(undelivered.length > 0
-        ? ["", `⚠️ Could not DM ${undelivered.join(", ")} — their DMs are closed.`]
+        ? ["", `⚠️ Could not DM ${undelivered.join(", ")}, their DMs are closed.`]
         : []),
     ].join("\n"),
   );
@@ -318,8 +315,8 @@ async function doStatus(interaction: I): Promise<void> {
   await interaction.reply({
     content: [
       game.phase === "lobby"
-        ? `**Lobby** — ${game.players.length} in, ${MIN_PLAYERS} needed.`
-        : `**${game.phase === "night" ? `Night ${game.night}` : "Day"}** — ` +
+        ? `**Lobby**, ${game.players.length} in, ${MIN_PLAYERS} needed.`
+        : `**${game.phase === "night" ? `Night ${game.night}` : "Day"}**, ` +
           `${living(game).length} alive of ${game.players.length}.`,
       "",
       roster(game, nameOf),
@@ -339,7 +336,7 @@ async function doEnd(interaction: I): Promise<void> {
   await interaction.reply(
     [
       "**Game abandoned.** For the record:",
-      ...result.value.players.map((p) => `${nameOf(p.userId)} — ${p.role}`),
+      ...result.value.players.map((p) => `${nameOf(p.userId)}, ${p.role}`),
     ].join("\n"),
   );
 }

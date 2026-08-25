@@ -43,7 +43,10 @@ import {
   handleStore,
   handleTournament,
   handleAdmin,
+  handleArena,
+  handleEvent,
   handleTopBoard,
+  handleTrivia,
   completeMarriage,
 } from "./rpgsocial.js";
 import { DEFAULT_TUNING, coin, shortDuration } from "../rpg/rules.js";
@@ -403,6 +406,21 @@ export const command: Command = {
         .addSubcommand((s) => s.setName("divorce").setDescription("End it"))
         .addSubcommand((s) => s.setName("status").setDescription("How it is going")),
     )
+    .addSubcommand((s) => s.setName("trivia").setDescription("A question, for coin"))
+    .addSubcommandGroup((g) =>
+      g
+        .setName("arena")
+        .setDescription("A free-for-all. Gear helps; it does not decide")
+        .addSubcommand((s) =>
+          s
+            .setName("open")
+            .setDescription("Open a match")
+            .addIntegerOption((o) => o.setName("buy_in").setDescription("Coin per entrant").setMinValue(0)),
+        )
+        .addSubcommand((s) => s.setName("join").setDescription("Enter the match"))
+        .addSubcommand((s) => s.setName("run").setDescription("Run it"))
+        .addSubcommand((s) => s.setName("status").setDescription("Who is in")),
+    )
     .addSubcommandGroup((g) =>
       g
         .setName("admin")
@@ -443,7 +461,19 @@ export const command: Command = {
             .setDescription("Delete a character permanently")
             .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
         )
-        .addSubcommand((s) => s.setName("clear").setDescription("Clear a stuck raid or tournament")),
+        .addSubcommand((s) => s.setName("clear").setDescription("Clear a stuck raid, match or tournament"))
+        .addSubcommand((s) =>
+          s
+            .setName("event")
+            .setDescription("Start a realm-wide event")
+            .addStringOption((o) =>
+              o.setName("kind").setDescription("Which one (random if omitted)").addChoices(
+                { name: "bounty — double coin", value: "bounty" },
+                { name: "study — double experience", value: "study" },
+                { name: "fortune — more crates", value: "fortune" },
+              ),
+            ),
+        ),
     )
     .addSubcommandGroup((g) =>
       g
@@ -495,6 +525,8 @@ export const command: Command = {
           return handleMarryGroup(interaction, sub);
         case "bet":
           return handleBet(interaction, sub);
+        case "arena":
+          return handleArena(interaction, sub);
         case "admin": {
           // Checked here rather than with `adminOnly` on the command: the rest
           // of /idlerpg is for everyone, and that flag is all-or-nothing.
@@ -505,7 +537,7 @@ export const command: Command = {
             });
             return;
           }
-          return handleAdmin(interaction, sub);
+          return sub === "event" ? handleEvent(interaction) : handleAdmin(interaction, sub);
         }
       }
     }
@@ -533,6 +565,8 @@ export const command: Command = {
         return doDuel(interaction);
       case "top":
         return handleTopBoard(interaction);
+      case "trivia":
+        return handleTrivia(interaction);
       default:
         await interaction.reply({ content: classMenu(), flags: MessageFlags.Ephemeral });
         return;

@@ -28,6 +28,7 @@ import {
   handleDuelButton,
   handleMarryButton,
 } from "./commands/rpg.js";
+import { decodeTrivia, handleTriviaButton } from "./commands/rpgsocial.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -453,6 +454,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const proposal = decodeMarry(interaction.customId);
       if (proposal) {
         await handleMarryButton(interaction, proposal);
+        return;
+      }
+
+      // Trivia is open to anyone -- the buttons are stripped on first answer,
+      // so the prize goes to whoever was fastest.
+      const trivia = decodeTrivia(interaction.customId);
+      if (trivia) {
+        await handleTriviaButton(interaction, trivia);
         return;
       }
 

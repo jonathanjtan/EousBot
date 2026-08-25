@@ -164,6 +164,33 @@ export interface Tournament {
   winnerId: string | null;
 }
 
+/**
+ * A realm-wide modifier with an expiry.
+ *
+ * Applied where rewards are handed out rather than inside the reward formulas,
+ * so rules.ts stays pure and a balance test never has to know that events
+ * exist. See engine.claimExpedition.
+ */
+export interface WorldEvent {
+  kind: "bounty" | "study" | "fortune";
+  name: string;
+  blurb: string;
+  /** Multiplier applied to whatever the event affects. */
+  multiplier: number;
+  endsAt: number;
+}
+
+/** A free-for-all elimination match. Distinct from the bracket in tournament. */
+export interface Arena {
+  hostId: string;
+  buyIn: number;
+  entrantIds: string[];
+  closesAt: number;
+  log: string[];
+  finished: boolean;
+  winnerId: string | null;
+}
+
 export interface GameState {
   characters: Record<string, Character>;
   guilds: Record<string, Guild>;
@@ -171,6 +198,8 @@ export interface GameState {
   nextListingId: number;
   raid: Raid | null;
   tournament: Tournament | null;
+  arena: Arena | null;
+  event: WorldEvent | null;
 }
 
 /** Something the engine wants said. Delivery is not its problem. */

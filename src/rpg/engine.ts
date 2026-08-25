@@ -1,4 +1,5 @@
 import { CLASSES, EXPEDITION_NAMES, LOSS_LINES, WIN_LINES } from "./content.js";
+import { activeEvent, eventMultiplier } from "./worldevent.js";
 import {
   DEFAULT_TUNING,
   applyXp,
@@ -61,6 +62,8 @@ export function newGame(): GameState {
     nextListingId: 1,
     raid: null,
     tournament: null,
+    arena: null,
+    event: null,
   };
 }
 
@@ -267,9 +270,18 @@ export function claimExpedition(state: GameState, userId: string, ctx: Ctx): Cla
   }
 
   character.stats.won += 1;
-  const money = moneyReward(character, run.difficulty, ctx.tuning);
+
+  // Realm-wide events multiply rewards *here*, not inside the reward formulas.
+  // Keeping them out of rules.ts means the balance suite measures the game's
+  // actual pacing rather than whatever event happened to be running.
+  const event = activeEvent(state, ctx.now);
+  const money = Math.floor(
+    moneyReward(character, run.difficulty, ctx.tuning) * eventMultiplier(event, "bounty"),
+  );
   const stolen = stolenCoin(character, money, ctx.rng);
-  const xp = xpReward(character, run.difficulty, ctx.tuning);
+  const xp = Math.floor(
+    xpReward(character, run.difficulty, ctx.tuning) * eventMultiplier(event, "study"),
+  );
 
   character.money += money + stolen;
   const levelled = applyXp(character.level, character.xp, xp);
@@ -278,7 +290,7 @@ export function claimExpedition(state: GameState, userId: string, ctx: Ctx): Cla
   const newTier = levelled.gained > 0 ? syncTier(character) : null;
 
   let crate: Rarity | null = null;
-  if (ctx.rng() < crateChance(run.difficulty)) {
+  if (ctx.rng() < crateChance(run.difficulty) * eventMultiplier(event, "fortune")) {
     crate = rollRarity(ctx.rng, run.difficulty / 6);
     character.crates[crate] += 1;
   }

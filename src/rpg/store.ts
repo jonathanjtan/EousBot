@@ -58,6 +58,8 @@ function hydrate(raw: Partial<GameState>): GameState {
     nextListingId: raw.nextListingId ?? 1,
     raid: raw.raid ?? null,
     tournament: raw.tournament ?? null,
+    arena: raw.arena ?? null,
+    event: raw.event ?? null,
   };
 }
 

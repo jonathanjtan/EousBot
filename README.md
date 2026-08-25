@@ -453,6 +453,179 @@ install doesn't relay 25 old posts as if they were live drops. Both the
 subscriptions and the seen-entry ids live in `state/eousbot.json`, so a
 self-deploy landing mid-drop doesn't replay the channel.
 
+## Idle RPG
+
+A port of [jotun's Idle RPG](https://idlerpg.net/) — the IRC game from 2004
+where you level up by doing nothing. Off unless `IDLERPG_ENABLED=true`.
+
+```
+/idlerpg register class:necromancer   make a character; your clock starts now
+/idlerpg login | logout               logging out costs you time
+/idlerpg align alignment:evil         good fights better, evil fights dirtier
+/idlerpg whoami | status player:<name>
+/idlerpg items [player:<name>]
+/idlerpg top [count:10]
+/idlerpg quest                        who is questing, and how far they have got
+/idlerpg map                          a PNG of where everyone is standing
+/idlerpg help
+/idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
+```
+
+`/idlerpg admin panel` posts a pinnable message with an **Enter the realm**
+button. That is the intended way in: one click and a two-field form, rather
+than asking everyone to discover a slash command with a required argument.
+
+There is nothing to click and no way to play well. Time logged in and quiet is
+the only thing that advances you; levelling finds you an item and picks you a
+fight, and everything else — calamities, godsends, the hand of God, quests —
+happens *to* you. The whole appeal is that it is a game you win by forgetting
+about it.
+
+The mechanics are ported faithfully from 3.1.2, the last release: the level
+curve (`rpbase * rpstep ** level`, with a flat day per level past 60), ten item
+slots whose sum is your entire combat statistic, the unique-item tiers and
+their 1-in-40 chains, alignment, critical strikes, item stealing, team battles,
+both quest types, the 500×500 map and its collision fights. The event text and
+the unique items' names are this port's own — see `src/idlerpg/flavor.ts`,
+which is the file to edit if you want the realm to sound like your server.
+
+### It costs nothing to run
+
+Worth stating plainly, because the rest of this bot is expensive and this part
+is not: **the game contains no LLM call of any kind.** It is arithmetic over a
+JSON file. Measured on the box it runs on:
+
+| Realm size | CPU per real hour | Share of one core |
+|---|---|---|
+| 10 players | 5 ms | 0.000% |
+| 50 players | 25 ms | 0.001% |
+| 200 players | 92 ms | 0.003% |
+
+Two hundred players cost about two seconds of CPU a day and a 235 KB save file.
+Nothing here scales with how many people play in any way you could notice on a
+bill. The only way Idle RPG spends money is indirectly: it posts to a channel,
+and if somebody @mentions the bot in reply, that is a normal chat turn at
+normal chat prices. Giving the game its own channel keeps the two apart.
+
+### What IRC gave it, and what Discord charges for
+
+IdleRPG assumed things IRC hands out for nothing: it can see who is in the
+channel, when they leave, when they rename, and every word they say. Discord
+puts all four behind privileged intents. The game runs without any of them, and
+runs better with them, so each is opt-in through `DISCORD_PRIVILEGED_INTENTS`.
+
+| Intent | What it buys | Without it |
+|---|---|---|
+| `messagecontent` | Talking billed by message length, as upstream bills an IRC line | A flat rate per message |
+| `presence` | Idling follows your Discord status; nobody types `/login` | `/idlerpg login` and `/idlerpg logout` |
+| `members` | The `part` and `nick` penalties | Those two never fire |
+
+**Enable them in the Developer Portal first.** Requesting an intent the portal
+has not granted makes the gateway refuse the connection, and a bot that cannot
+log in is one systemd restarts five times and then leaves stopped.
+
+And be clear-eyed about `messagecontent`: this bot was deliberately built
+without it, and the claim at the top of `src/index.ts` — that a stolen token
+cannot scrape your channel history — stops being true the moment you turn it
+on. That is a reasonable trade for a server of friends and a bad one for a
+server of strangers. It is a decision, not a setting.
+
+### Presence, and why going offline is free
+
+With `IDLERPG_ONLINE_SOURCE=presence`, your clock runs whenever Discord shows
+you as anything but offline, and stops when it doesn't. Nobody logs in.
+
+Going offline costs **no penalty** — only the stopped clock — and that is a
+deliberate departure. On IRC your client stayed connected while you slept, so
+quitting the channel was a choice worth charging for. On Discord, going offline
+is what a phone does every night; billing it would mean the game punishes
+sleep. Presence also does not reset quest tenure, or a nightly disconnect would
+keep everyone permanently ineligible to quest.
+
+`/idlerpg logout` keeps its penalty, because that one *is* a choice. It also
+sticks: presence will not quietly undo a logout you have already paid for,
+until you `/idlerpg login` again.
+
+### What talking costs, and where
+
+Penalties scale exponentially with level, which is the mechanism that makes a
+long-lived character careful: at `penstep` 1.14 a level-50 player pays roughly
+700 times what a level-1 player pays for the same slip. With `messagecontent`
+on, the charge is the message's length in characters, so a paragraph at level
+40 costs hours. It is meant to be a decision.
+
+**`IDLERPG_PENALTY_SCOPE` decides where that applies**, and the default matters
+more than any other setting here:
+
+- `channel` (default) — only the game channel is quiet ground. This is the
+  closer analogue: on IRC you joined `#idlerpg` to idle in it, and talking in
+  the other channels you sat in cost nothing.
+- `guild` — talking anywhere costs. A harsher game than upstream's, and one
+  that makes playing a vow of silence across your whole server.
+
+Start on `channel`. A server where everyone has quietly stopped talking because
+a bot is charging them for it is not a server anyone enjoys.
+
+Talking also abandons a quest, which is upstream's rule rather than an
+oversight — the original runs the same check for a message as for a
+disconnect. Renaming yourself does not.
+
+### Recommended setup
+
+For a server of friends who all want to play without thinking about it:
+
+```bash
+DISCORD_PRIVILEGED_INTENTS=members,presence,messagecontent
+IDLERPG_ENABLED=true
+IDLERPG_CHANNEL_ID=<a channel made for this>
+IDLERPG_ONLINE_SOURCE=presence
+IDLERPG_PENALTY_SCOPE=channel
+```
+
+Then enable the three intents in the Developer Portal, restart, and run
+`/idlerpg admin panel` in the game channel and pin it. Everyone clicks once and
+is playing forever; nobody types `/login`, and nobody is penalised for talking
+in the rest of the server.
+
+To run it without granting any privileged intent, drop the first line and leave
+`IDLERPG_ONLINE_SOURCE=manual`. The game is fully playable that way — people
+just use `/idlerpg login` and `/idlerpg logout`, and talking is billed flat.
+
+### A small realm runs hot
+
+Worth knowing before you set `rpstep` and wonder why nobody is level 5.
+
+A quest always draws exactly four players and always takes a quarter off their
+clocks, whatever the population. In the IRC channels this was written for, that
+is a lottery you win twice a year. In a realm of six it is most of your
+progression. Simulated over the same period at canonical settings:
+
+| Players | Top level reached |
+|---|---|
+| 4 | 123 |
+| 8 | 94 |
+| 30 | 75 |
+
+This is upstream's behaviour rather than a defect, and `test/idlerpg/engine.test.ts`
+pins it so a future change to quests has to be deliberate about it. If your
+server is small and you want the canonical pace, the knob to reach for is
+`IDLERPG_RPSTEP` — but read the warning in `.env.example` first.
+
+### Operating it
+
+The realm lives in `state/idlerpg.json`, written every minute and on shutdown,
+and it is a plain readable file on purpose: the original's database was one an
+operator could open and repair, and that is worth keeping in a game that will
+accrue years of somebody's idling. A save that will not parse stops the game
+rather than being silently replaced with an empty world.
+
+A tick credits real elapsed time rather than the timer interval, capped at
+`IDLERPG_MAX_CATCHUP_S`. That is what stops a self-deploy restart from costing
+everyone the minute it took, without letting a day-long outage hand them a day.
+
+`/idlerpg admin pause` freezes clocks, events and quests without stopping the
+bot — useful before a risky deploy.
+
 ## Adding commands
 
 Drop a module in `src/commands/` exporting a `Command`, then register it in
@@ -519,6 +692,15 @@ src/
   target.ts       parsing a Target listing (pure)
   targetapi.ts    fetching one, and the CAPTCHA wall behind live stock
   listing.ts      rendering what we can read about a listing (pure)
+  idlerpg/
+    types.ts      the shape of a realm
+    rules.ts      every number in the game, and pure functions over them
+    flavor.ts     what the realm says about itself; prose only, no mechanics
+    engine.ts     the tick and the player verbs; no config, no discord.js
+    format.ts     character sheets, leaderboards, message batching
+    map.ts        the 500x500 map, rendered to PNG through sharp
+    store.ts      the realm on disk
+    watch.ts      the clock, and the only place the game meets Discord
 infra/
   install.sh      install/update on an existing Linux box
   eousbot.service systemd user unit

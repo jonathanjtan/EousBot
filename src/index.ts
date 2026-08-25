@@ -16,11 +16,30 @@ import {
 } from "./approval.js";
 import { handleAskModal } from "./commands/ask.js";
 import { commandsByName, messageCommandsByName } from "./commands/index.js";
+import {
+  JOIN_BUTTON_ID,
+  JOIN_MODAL_ID,
+  buildJoinModal,
+  handleJoinModal,
+} from "./commands/idlerpg.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
 import { acquire, describe, held, release } from "./inflight.js";
+import { penalizeMessage, penalizeNick, penalizePart } from "./idlerpg/engine.js";
+import {
+  context as idlerpgContext,
+  inPenaltyScope,
+  isPresent,
+  notePresence,
+  presenceDriven,
+  publish,
+  realm,
+  saveNow,
+  startIdleRpg,
+  syncAllPresence,
+} from "./idlerpg/watch.js";
 import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
@@ -34,7 +53,7 @@ import { startUsageResetWatch } from "./usagewatch.js";
  * EousBot: takes feature requests, writes its own code, and redeploys itself
  * behind a human approval gate.
  *
- * Guilds plus GuildMessages, and deliberately NOT MessageContent. Discord
+ * Guilds plus GuildMessages, and by default NOT MessageContent. Discord
  * delivers full content for messages that mention the app even without that
  * privileged intent, so the conversational handler works while the bot remains
  * unable to read the server's ordinary conversation -- which keeps it out of
@@ -47,11 +66,44 @@ import { startUsageResetWatch } from "./usagewatch.js";
  * the bot therefore hands it your reply and nothing else. Pointing it at
  * another message needs the context menu command in commands/ask.ts, which
  * Discord exempts by name.
+ *
+ * DISCORD_PRIVILEGED_INTENTS can switch that off, and everything in the
+ * paragraph above stops being true when it does. It exists because Idle RPG
+ * wants inputs IRC gave it for nothing -- see `intents()` below for which and
+ * why -- and it is a per-server judgement, not a default. A server that turns
+ * on `messagecontent` has decided this process may read its conversation, and
+ * should be told so rather than discovering it in a commit.
  */
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-});
+/**
+ * The gateway intents, assembled from config.
+ *
+ * Guilds and GuildMessages are unconditional and unprivileged. The other three
+ * are privileged, off by default, and each buys back a specific thing IRC gave
+ * Idle RPG for free:
+ *
+ *   MessageContent - a message's length, so talking is billed the way upstream
+ *                    bills an IRC line instead of at a flat rate
+ *   GuildPresences - who is actually connected, so nobody types /login
+ *   GuildMembers   - leaving the server and renaming yourself, the last two of
+ *                    upstream's five penalties
+ *
+ * They are not free. MessageContent in particular means this process, and
+ * anyone holding its token, can read the server's ordinary conversation --
+ * which the bot was deliberately built not to do. Enabling it is a judgement
+ * about a specific server, not a default, which is why it lives in config and
+ * starts empty.
+ */
+function intents(): GatewayIntentBits[] {
+  const wanted = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+  const privileged = config.discord.privilegedIntents;
+  if (privileged.messageContent) wanted.push(GatewayIntentBits.MessageContent);
+  if (privileged.presence) wanted.push(GatewayIntentBits.GuildPresences);
+  if (privileged.members) wanted.push(GatewayIntentBits.GuildMembers);
+  return wanted;
+}
+
+const client = new Client({ intents: intents() });
 
 /** Serializes deploys the same way builds are serialized, for the same reason. */
 let deployInFlight = false;
@@ -81,6 +133,16 @@ client.once(Events.ClientReady, async (ready) => {
   // Resumes the drop-feed relay behind /restock. No-op unless
   // TARGET_RESTOCK_ENABLED is set.
   startFeedWatch(client);
+  // Starts the Idle RPG clock. No-op unless IDLERPG_ENABLED is set.
+  startIdleRpg(client);
+  if (config.idlerpg.enabled) {
+    const guild = client.guilds.cache.get(config.discord.guildId);
+    if (guild) {
+      await syncAllPresence(guild).catch((err) =>
+        log.warn("Idle RPG presence sync failed", { err: String(err) }),
+      );
+    }
+  }
 
   await announcePendingDeploy(sha);
   await reportInterruptedWork();
@@ -205,6 +267,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
+      // Idle RPG first: its IDs carry no payload and would decode to null in
+      // either of the codecs below, which return early rather than fall through.
+      if (interaction.customId === JOIN_MODAL_ID) {
+        await handleJoinModal(interaction);
+        return;
+      }
+
       // Checked before the approval codec: the two use different prefixes, and
       // `decodeCustomId` returning null for one of ours would silently drop it.
       const askKey = decodeAskCustomId(interaction.customId);
@@ -342,6 +411,25 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     }
 
     if (interaction.isButton()) {
+      // The join panel is open to everyone in the guild by design -- it is the
+      // whole point of the panel. Nothing it can do is privileged: it creates a
+      // character for whoever pressed it and can create no other.
+      if (interaction.customId === JOIN_BUTTON_ID) {
+        if (!config.idlerpg.enabled) {
+          await interaction.reply({
+            content: "Idle RPG is switched off.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        // showModal must be the first response to an interaction; it cannot
+        // follow a defer or a reply.
+        await interaction.showModal(
+          buildJoinModal(interaction.member?.user.username ?? interaction.user.username),
+        );
+        return;
+      }
+
       const target = decodeCustomId(interaction.customId);
       if (!target) return;
 
@@ -478,6 +566,27 @@ client.on(Events.MessageCreate, async (message) => {
   // Ignore other bots (and ourselves) unconditionally: a bot that answers bots
   // can be walked into a loop by anything that echoes mentions.
   if (message.author.bot) return;
+
+  // Idle RPG's only input. Deliberately ahead of the mention check: the game
+  // is about *not* talking, so it has to see every message, and it is the one
+  // thing here that works without the Message Content intent -- the bot needs
+  // to know that somebody spoke, never what they said.
+  if (
+    config.idlerpg.enabled &&
+    message.guildId === config.discord.guildId &&
+    inPenaltyScope(message.channelId)
+  ) {
+    try {
+      // Zero without the MessageContent intent, which penalizeMessage reads as
+      // "unknown" and bills at the flat rate rather than as a free message.
+      await publish(
+        penalizeMessage(realm(), message.author.id, idlerpgContext(), message.content.length),
+      );
+    } catch (err) {
+      log.warn("Idle RPG penalty failed", { err: String(err) });
+    }
+  }
+
   // `ignoreRepliedUser` is the whole point: replying to the bot pings it, and
   // without this every reply to one of its answers reads as a fresh question.
   // Continuing a conversation should take an explicit @, same as starting one.
@@ -493,11 +602,55 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+/**
+ * Idle RPG's remaining inputs, all of which need a privileged intent and all of
+ * which are inert without one.
+ *
+ * Registered as unconditionally as the message hook is: each handler checks
+ * whether the game wants it, rather than the wiring guessing at boot.
+ */
+client.on(Events.PresenceUpdate, (_old, presence) => {
+  if (!config.idlerpg.enabled || !presenceDriven()) return;
+  if (presence.guild?.id !== config.discord.guildId) return;
+  if (presence.user?.bot) return;
+  try {
+    notePresence(presence.userId, isPresent(presence.status));
+  } catch (err) {
+    log.warn("Idle RPG presence update failed", { err: String(err) });
+  }
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  if (!config.idlerpg.enabled || member.guild.id !== config.discord.guildId) return;
+  if (member.user.bot) return;
+  try {
+    await publish(penalizePart(realm(), member.id, idlerpgContext()));
+  } catch (err) {
+    log.warn("Idle RPG part penalty failed", { err: String(err) });
+  }
+});
+
+client.on(Events.GuildMemberUpdate, async (before, after) => {
+  if (!config.idlerpg.enabled || after.guild.id !== config.discord.guildId) return;
+  if (after.user.bot) return;
+  // GuildMemberUpdate fires for role changes, timeouts and avatar edits too.
+  // Only a rename is a penalty, so everything else must fall through silently.
+  if (before.nickname === after.nickname) return;
+  try {
+    await publish(penalizeNick(realm(), after.id, idlerpgContext()));
+  } catch (err) {
+    log.warn("Idle RPG nick penalty failed", { err: String(err) });
+  }
+});
+
 // A self-restarting bot must exit cleanly, or systemd's restart races the
 // gateway's session teardown and Discord reports it perpetually offline.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     log.info(`Received ${signal}, shutting down`);
+    // The realm is flushed on a timer, so an unannounced restart would
+    // otherwise roll every player back to the last save.
+    saveNow();
     client.destroy();
     process.exit(0);
   });

@@ -46,6 +46,18 @@ const schema = z.object({
   DISCORD_CHANNEL_ID: z.string().min(1, "DISCORD_CHANNEL_ID is required"),
   DISCORD_ADMIN_IDS: z.string().default(""),
 
+  /**
+   * Privileged gateway intents to request: any of `members`, `presence`,
+   * `messagecontent`, comma-separated. Blank asks for none, which is the
+   * historical behaviour and the safer default.
+   *
+   * These must ALSO be enabled in the Discord Developer Portal. Requesting one
+   * the portal has not granted makes the gateway refuse the connection
+   * outright, and a bot that cannot log in is a bot systemd will crash-loop
+   * five times and then give up on. Flip the portal switches first.
+   */
+  DISCORD_PRIVILEGED_INTENTS: z.string().default(""),
+
   GITHUB_TOKEN: z.string().min(1, "GITHUB_TOKEN is required"),
   GITHUB_OWNER: z.string().min(1),
   GITHUB_REPO: z.string().min(1),
@@ -111,6 +123,59 @@ const schema = z.object({
   REPO_PATH: z.string().optional(),
   SYSTEMD_UNIT: z.string().default(""),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  // ------------------------------------------------------------- /idlerpg ---
+  // A port of jotun's Idle RPG (idlerpg.net) to Discord. Off by default: it
+  // ticks forever and talks to the channel unprompted, which is not something
+  // to switch on for someone by surprise.
+  IDLERPG_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  // Where the realm narrates itself. Blank uses DISCORD_CHANNEL_ID; a busy
+  // server will want it somewhere else, because the game is chatty by design.
+  IDLERPG_CHANNEL_ID: z.string().default(""),
+  // How often the world advances. Event rates are scaled by the tick length,
+  // so this changes responsiveness and nothing else about the game.
+  IDLERPG_TICK_MS: z.coerce.number().int().min(1000).default(10_000),
+  // The most real time one tick may credit, in seconds. The bot redeploys
+  // itself, so a restart must not cost anyone their idling -- but an outage
+  // measured in hours must not hand it to them either. Ten minutes splits the
+  // two: longer than any deploy, shorter than any outage worth noticing.
+  IDLERPG_MAX_CATCHUP_S: z.coerce.number().int().min(0).default(600),
+  // The level curve: seconds to level 1, and the growth factor per level after
+  // it. 600 and 1.16 are the canonical values and describe a game measured in
+  // years. Raising rpstep is the fastest way to make it a game measured in
+  // days, and the fastest way to ruin it.
+  IDLERPG_RPBASE: z.coerce.number().int().positive().default(600),
+  IDLERPG_RPSTEP: z.coerce.number().positive().default(1.16),
+  // Growth of penalties per level. Deliberately close to rpstep: penalties are
+  // meant to keep pace with a character, not fade into rounding.
+  IDLERPG_PENSTEP: z.coerce.number().positive().default(1.14),
+  // Cap on any single penalty, in seconds. 0 means uncapped, as upstream.
+  IDLERPG_PENLIMIT: z.coerce.number().int().min(0).default(0),
+  IDLERPG_MAP_SIZE: z.coerce.number().int().min(10).default(500),
+  // Which messages count as breaking idle.
+  //
+  // `channel` is the default and the closer analogue: on IRC you joined
+  // #idlerpg specifically to idle in it, and talking in the other channels you
+  // sat in cost nothing. `guild` charges for talking anywhere, which is a
+  // harsher game than upstream's and turns playing into a vow of silence
+  // across the whole server.
+  IDLERPG_PENALTY_SCOPE: z.enum(["channel", "guild"]).default("channel"),
+  // What decides whether a player's clock is running.
+  //
+  //   presence - follows their Discord status; nobody ever types /login
+  //   manual   - only /idlerpg login and /idlerpg logout move it
+  //
+  // `presence` needs the GuildPresences intent in DISCORD_PRIVILEGED_INTENTS,
+  // and falls back to `manual` with a loud log line if it is missing, rather
+  // than leaving a realm where nobody is ever online.
+  IDLERPG_ONLINE_SOURCE: z.enum(["manual", "presence"]).default("manual"),
+  // How often the realm is written to disk, and how long a player goes between
+  // being told what talking costs them.
+  IDLERPG_SAVE_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
+  IDLERPG_NOTICE_THROTTLE_MS: z.coerce.number().int().min(0).default(3_600_000),
 
   // ------------------------------------------------------------- /restock ---
   // Drop alerting is opt-in. It is the only feature that talks to a third party
@@ -217,6 +282,12 @@ export const config = {
      * the bot to write or ship code is gated on membership here.
      */
     adminIds: new Set(csv(env.DISCORD_ADMIN_IDS)),
+    /** Privileged intents requested at boot. See index.ts for what each buys. */
+    privilegedIntents: {
+      members: csv(env.DISCORD_PRIVILEGED_INTENTS).includes("members"),
+      presence: csv(env.DISCORD_PRIVILEGED_INTENTS).includes("presence"),
+      messageContent: csv(env.DISCORD_PRIVILEGED_INTENTS).includes("messagecontent"),
+    },
   },
   github: {
     token: env.GITHUB_TOKEN,
@@ -259,6 +330,28 @@ export const config = {
     repoPath,
     systemdUnit: env.SYSTEMD_UNIT,
     logLevel: env.LOG_LEVEL,
+  },
+  /**
+   * Idle RPG. The rules live in idlerpg/rules.ts; these are the only numbers a
+   * server is expected to touch, and mostly it should not touch them either.
+   */
+  idlerpg: {
+    enabled: env.IDLERPG_ENABLED,
+    channelId: env.IDLERPG_CHANNEL_ID || env.DISCORD_CHANNEL_ID,
+    tickMs: env.IDLERPG_TICK_MS,
+    maxCatchupSeconds: env.IDLERPG_MAX_CATCHUP_S,
+    penaltyScope: env.IDLERPG_PENALTY_SCOPE,
+    onlineSource: env.IDLERPG_ONLINE_SOURCE,
+    saveIntervalMs: env.IDLERPG_SAVE_INTERVAL_MS,
+    noticeThrottleMs: env.IDLERPG_NOTICE_THROTTLE_MS,
+    tuning: {
+      rpBase: env.IDLERPG_RPBASE,
+      rpStep: env.IDLERPG_RPSTEP,
+      penStep: env.IDLERPG_PENSTEP,
+      penLimit: env.IDLERPG_PENLIMIT,
+      mapX: env.IDLERPG_MAP_SIZE,
+      mapY: env.IDLERPG_MAP_SIZE,
+    },
   },
   /**
    * Drop alerting. See feed.ts for why this relays community feeds rather than

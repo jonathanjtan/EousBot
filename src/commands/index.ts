@@ -6,6 +6,7 @@ import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
 import { command as embed } from "./embed.js";
 import { command as hoyohell } from "./hoyohell.js";
+import { command as idlerpg } from "./idlerpg.js";
 import { command as lenny } from "./lenny.js";
 import { command as ping } from "./ping.js";
 import { command as remindme } from "./remindme.js";
@@ -45,6 +46,7 @@ export const commands: Command[] = [
   smash,
   bugcat,
   avatar,
+  idlerpg,
   strip,
   embed,
   restock,

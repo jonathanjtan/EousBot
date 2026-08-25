@@ -1,4 +1,11 @@
-import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from "discord.js";
 import { find, findByName } from "../rpg/engine.js";
 import {
   buyCrates,
@@ -56,6 +63,16 @@ import {
   type RankMetric,
 } from "../rpg/format.js";
 import { DEFAULT_TUNING, coin, tierFor } from "../rpg/rules.js";
+import {
+  TRIVIA_PRIZE,
+  answerTrivia,
+  askTrivia,
+  enterArena,
+  openArena,
+  runArena,
+  startEvent,
+} from "../rpg/arena.js";
+import { activeEvent } from "../rpg/worldevent.js";
 import type { Ctx } from "../rpg/engine.js";
 import { save, world } from "../rpg/store.js";
 import type { GodId, Rarity } from "../rpg/types.js";
@@ -660,4 +677,158 @@ export async function handleTopBoard(interaction: I): Promise<void> {
   await interaction.reply(
     rankBoard(Object.values(world().characters), metric, count),
   );
+}
+
+// ------------------------------------------------------------------ arena ---
+
+export async function handleArena(interaction: I, sub: string): Promise<void> {
+  const state = world();
+
+  if (sub === "status") {
+    if (!state.arena) return whisper(interaction, "No match right now.");
+    const name = namer();
+    const a = state.arena;
+    if (a.finished) {
+      await interaction.reply(
+        [`**Match over.**`, "", ...a.log].join("\n").slice(0, 1900),
+      );
+      return;
+    }
+    await interaction.reply(
+      [
+        `**Free-for-all** — buy-in ${coin(a.buyIn)}, pot ${coin(a.buyIn * a.entrantIds.length)}.`,
+        `Entry closes <t:${Math.floor(a.closesAt / 1000)}:R>.`,
+        "",
+        `**${a.entrantIds.length} in:** ${a.entrantIds.map(name).join(", ")}`,
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (sub === "open") {
+    const buyIn = interaction.options.getInteger("buy_in") ?? 0;
+    const result = openArena(state, interaction.user.id, buyIn, ctx());
+    if (!result.ok) return whisper(interaction, result.reason);
+    save();
+    await interaction.reply(
+      `**${interaction.user.username}** opened a free-for-all. Buy-in ${coin(buyIn)}, ` +
+        `entry closes <t:${Math.floor(result.value.closesAt / 1000)}:R>. \`/idlerpg arena join\`.`,
+    );
+    return;
+  }
+
+  if (sub === "join") {
+    const result = enterArena(state, interaction.user.id, ctx());
+    if (!result.ok) return whisper(interaction, result.reason);
+    save();
+    await interaction.reply(
+      `**${interaction.user.username}** is in. ${result.value.entrantIds.length} entrants.`,
+    );
+    return;
+  }
+
+  if (sub === "run") {
+    const result = runArena(state, ctx());
+    if (!result.ok) return whisper(interaction, result.reason);
+    save();
+    const v = result.value;
+    // The transcript can outrun a Discord message on a big field, so the tail
+    // is what gets kept -- the rounds that decided it.
+    const body = v.arena.log.join("\n\n");
+    await interaction.reply(
+      [
+        `**The arena** — ${v.arena.entrantIds.length} in, ${coin(v.pot)} on the table.`,
+        "",
+        body.length > 1700 ? `…\n${body.slice(-1700)}` : body,
+      ].join("\n"),
+    );
+  }
+}
+
+// ----------------------------------------------------------------- trivia ---
+
+export const TRIVIA_PREFIX = "rpg:trivia";
+
+/** `rpg:trivia:<questionIndex>:<optionIndex>`. */
+export function encodeTrivia(question: number, option: number): string {
+  return `${TRIVIA_PREFIX}:${question}:${option}`;
+}
+
+export function decodeTrivia(customId: string): { question: number; option: number } | null {
+  const parts = customId.split(":");
+  if (parts.length !== 4 || `${parts[0]}:${parts[1]}` !== TRIVIA_PREFIX) return null;
+  const question = Number(parts[2]);
+  const option = Number(parts[3]);
+  if (!Number.isInteger(question) || !Number.isInteger(option)) return null;
+  return { question, option };
+}
+
+export async function handleTrivia(interaction: I): Promise<void> {
+  const { question, index } = askTrivia(ctx());
+  await interaction.reply({
+    content: `**${question.prompt}**\n_First correct answer takes ${coin(TRIVIA_PRIZE)}._`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        ...question.options.map((option, i) =>
+          new ButtonBuilder()
+            .setCustomId(encodeTrivia(index, i))
+            .setLabel(option.slice(0, 80))
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      ),
+    ],
+  });
+}
+
+/**
+ * Scores an answer.
+ *
+ * The buttons are stripped on the first response, so the prize genuinely goes
+ * to whoever was fastest rather than to everyone who eventually clicked.
+ */
+export async function handleTriviaButton(
+  interaction: ButtonInteraction,
+  target: { question: number; option: number },
+): Promise<void> {
+  const result = answerTrivia(world(), interaction.user.id, target.question, target.option);
+  if (!result.ok) {
+    await interaction.reply({ content: result.reason, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  save();
+  const v = result.value;
+  await interaction.update({
+    content:
+      `**${interaction.user.username}** answered **${v.correct ? "correctly" : "wrongly"}**. ` +
+      `The answer was *${v.answer}*.` +
+      (v.correct ? ` ${coin(v.prize)} awarded.` : ""),
+    components: [],
+  });
+}
+
+// ------------------------------------------------------------ world event ---
+
+export async function handleEvent(interaction: I): Promise<void> {
+  const state = world();
+  const kind = interaction.options.getString("kind") as
+    | "bounty"
+    | "study"
+    | "fortune"
+    | null;
+  const event = startEvent(state, ctx(), kind ?? undefined);
+  save();
+  await interaction.reply(
+    [
+      `**${event.name}**`,
+      event.blurb,
+      `Ends <t:${Math.floor(event.endsAt / 1000)}:R>.`,
+    ].join("\n"),
+  );
+}
+
+/** Shown on the adventure table so nobody misses a running event. */
+export function eventLine(now: number): string | null {
+  const event = activeEvent(world(), now);
+  if (!event) return null;
+  return `**${event.name}** — ${event.blurb} (ends <t:${Math.floor(event.endsAt / 1000)}:R>)`;
 }

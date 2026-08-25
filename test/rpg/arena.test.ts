@@ -218,3 +218,76 @@ test("a question that no longer exists is refused rather than crashing", () => {
   assert.equal(arena.answerTrivia(state, "u0", 9_999, 0).ok, false);
   assert.equal(arena.answerTrivia(state, "nobody", 0, 0).ok, false);
 });
+
+// ------------------------------------------------------------------ maths ---
+
+test("a generated sum is always solvable and always has one right answer", () => {
+  const rng = seeded(17);
+  for (let d = 1; d <= 5; d += 1) {
+    for (let i = 0; i < 400; i += 1) {
+      const p = arena.makeMathProblem(rng, d);
+
+      assert.equal(p.options.length, 4, `d${d}: wrong option count`);
+      assert.equal(new Set(p.options).size, 4, `d${d}: duplicate options in ${p.options.join(",")}`);
+      assert.ok(
+        p.answer >= 0 && p.answer < p.options.length,
+        `d${d}: answer index ${p.answer} out of range`,
+      );
+
+      // The labelled answer must actually be the arithmetic result.
+      const [lhs] = p.prompt.split(" = ");
+      const expr = (lhs as string).replace("×", "*").replace("÷", "/").replace("−", "-");
+      const truth = Function(`"use strict";return (${expr})`)() as number;
+      assert.equal(
+        Number(p.options[p.answer]),
+        truth,
+        `d${d}: "${p.prompt}" labelled ${p.options[p.answer]}, really ${truth}`,
+      );
+
+      // Every option is a positive integer, so nothing reads as a trick.
+      for (const option of p.options) {
+        const n = Number(option);
+        assert.ok(Number.isInteger(n) && n > 0, `d${d}: bad option ${option}`);
+        assert.ok(option.length <= 80, `d${d}: option too long for a button`);
+      }
+    }
+  }
+});
+
+test("division problems always divide exactly", () => {
+  const rng = seeded(23);
+  let seen = 0;
+  for (let i = 0; i < 3_000; i += 1) {
+    const p = arena.makeMathProblem(rng, 4);
+    if (!p.prompt.includes("÷")) continue;
+    seen += 1;
+    const [a, b] = (p.prompt.split(" = ")[0] as string).split(" ÷ ").map(Number);
+    assert.equal((a as number) % (b as number), 0, `${p.prompt} does not divide exactly`);
+  }
+  assert.ok(seen > 50, "division should actually come up at higher difficulty");
+});
+
+test("harder sums pay more, and difficulty is clamped to the published range", () => {
+  assert.ok(arena.mathPrize(5) > arena.mathPrize(1));
+  const rng = seeded(2);
+  assert.equal(arena.makeMathProblem(rng, 99).difficulty, 5);
+  assert.equal(arena.makeMathProblem(rng, -4).difficulty, 1);
+});
+
+// -------------------------------------------------------- seasonal events ---
+
+test("a season is a longer event, and every definition is well formed", () => {
+  const state = realm(1);
+  const event = arena.startSeason(state, ctx(), 0);
+  const ordinary = arena.startEvent(state, ctx(), "bounty");
+
+  assert.ok(
+    arena.SEASONS.length >= 4 && event.endsAt - START > ordinary.endsAt - START,
+    "a season should outlast an ordinary event",
+  );
+  for (const season of arena.SEASONS) {
+    assert.ok(season.name.length > 0 && season.blurb.length > 0);
+    assert.ok(season.multiplier > 1, `${season.name} does nothing`);
+    assert.ok(["bounty", "study", "fortune"].includes(season.kind), `${season.name}: bad axis`);
+  }
+});

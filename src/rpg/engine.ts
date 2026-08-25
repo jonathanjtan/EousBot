@@ -64,6 +64,9 @@ export function newGame(): GameState {
     tournament: null,
     arena: null,
     event: null,
+    chess: [],
+    nextChessId: 1,
+    werewolf: null,
   };
 }
 

@@ -1,5 +1,5 @@
 import { find } from "./engine.js";
-import { clamp, coin, pick, power, randInt, shuffle } from "./rules.js";
+import { clamp, coin, pick, power, randInt, shuffle, type Rng } from "./rules.js";
 import type { Ctx } from "./engine.js";
 import { EVENT_DURATION_MS, activeEvent, eventMultiplier } from "./worldevent.js";
 import type { Arena, Character, GameState, WorldEvent } from "./types.js";
@@ -308,3 +308,142 @@ export function answerTrivia(
 
 // Re-exported so callers have one import for anything event-shaped.
 export { EVENT_DURATION_MS, activeEvent, eventMultiplier };
+
+// ------------------------------------------------------------------ maths ---
+
+export interface MathProblem {
+  prompt: string;
+  options: readonly string[];
+  answer: number;
+  /** 1-5. Decides both the arithmetic and the payout. */
+  difficulty: number;
+}
+
+/** Coin a correct sum pays, by difficulty. Harder sums are worth more. */
+export function mathPrize(difficulty: number): number {
+  return 100 * difficulty;
+}
+
+/**
+ * Generates an arithmetic problem rather than drawing one from a bank.
+ *
+ * Trivia needs a bank because general knowledge cannot be synthesised;
+ * arithmetic can, so this never repeats and never needs curating. The
+ * distractors are the interesting part -- they are near-misses built from the
+ * mistakes people actually make (off-by-one, sign flips, digit transposition),
+ * because four random numbers make the right answer obvious at a glance.
+ */
+export function makeMathProblem(rng: Rng, difficulty: number): MathProblem {
+  const d = clamp(Math.floor(difficulty), 1, 5);
+  const scale = 10 ** d;
+
+  let prompt: string;
+  let value: number;
+
+  const kind = randInt(rng, d >= 3 ? 4 : 3);
+  if (kind === 0) {
+    const a = 1 + randInt(rng, scale);
+    const b = 1 + randInt(rng, scale);
+    prompt = `${a} + ${b}`;
+    value = a + b;
+  } else if (kind === 1) {
+    // Built from the answer outwards, for the same reason division is: picking
+    // two operands independently lets them collide, and "5 − 5 = ?" is both a
+    // silly question and a zero answer, which breaks the promise that every
+    // option on the buttons is a positive integer.
+    const answer = 1 + randInt(rng, scale);
+    const b = 1 + randInt(rng, scale);
+    prompt = `${answer + b} − ${b}`;
+    value = answer;
+  } else if (kind === 2) {
+    const a = 2 + randInt(rng, 4 * d);
+    const b = 2 + randInt(rng, 4 * d);
+    prompt = `${a} × ${b}`;
+    value = a * b;
+  } else {
+    // Built from the answer outwards so it always divides exactly.
+    const b = 2 + randInt(rng, 4 * d);
+    const answer = 2 + randInt(rng, 6 * d);
+    prompt = `${b * answer} ÷ ${b}`;
+    value = answer;
+  }
+
+  const wrong = new Set<number>();
+  const jitter = Math.max(1, Math.floor(Math.abs(value) * 0.1));
+  let guard = 0;
+  while (wrong.size < 3 && guard < 50) {
+    guard += 1;
+    const slip = [
+      value + 1,
+      value - 1,
+      value + jitter + randInt(rng, jitter + 1),
+      value - jitter - randInt(rng, jitter + 1),
+      Number(String(value).split("").reverse().join("")),
+    ][randInt(rng, 5)] as number;
+    if (Number.isFinite(slip) && slip !== value && slip > 0) wrong.add(slip);
+  }
+  // Backfill if the near-misses collided, so there are always four choices.
+  let filler = value + 2;
+  while (wrong.size < 3) {
+    if (filler !== value && filler > 0) wrong.add(filler);
+    filler += 1;
+  }
+
+  const options = shuffle(rng, [value, ...wrong].map(String));
+  return {
+    prompt: `${prompt} = ?`,
+    options,
+    answer: options.indexOf(String(value)),
+    difficulty: d,
+  };
+}
+
+// -------------------------------------------------------- seasonal events ---
+
+/**
+ * Seasonal events are world events wearing a costume.
+ *
+ * The original ships four near-identical cogs -- one per holiday -- each
+ * granting a themed currency during a window. The mechanic underneath all of
+ * them is "a limited-time event with a special reward track", which the event
+ * system already does, so these are definitions rather than modules. A server
+ * can run one whenever it likes instead of waiting for October.
+ */
+export const SEASONS: readonly Omit<WorldEvent, "endsAt">[] = [
+  {
+    kind: "fortune",
+    name: "The Turning of the Year",
+    blurb: "Something is abroad and it is feeling generous. Crates fall twice as often.",
+    multiplier: 2,
+  },
+  {
+    kind: "bounty",
+    name: "Harvest Home",
+    blurb: "The stores are full and somebody is counting wrong in your favour. Double coin.",
+    multiplier: 2,
+  },
+  {
+    kind: "study",
+    name: "The Long Dark",
+    blurb: "Nothing to do but read. Triple experience while it lasts.",
+    multiplier: 3,
+  },
+  {
+    kind: "bounty",
+    name: "A Week of Small Kindnesses",
+    blurb: "Everyone is being unusually decent about payment. Coin and a half.",
+    multiplier: 1.5,
+  },
+];
+
+export function startSeason(state: GameState, ctx: Ctx, index?: number): WorldEvent {
+  const chosen =
+    index !== undefined && SEASONS[index]
+      ? (SEASONS[index] as Omit<WorldEvent, "endsAt">)
+      : pick(ctx.rng, SEASONS);
+  // Seasons run four times as long as an ordinary event -- they are meant to
+  // be a week the server remembers, not a two-hour window somebody missed.
+  const event: WorldEvent = { ...chosen, endsAt: ctx.now + EVENT_DURATION_MS * 4 };
+  state.event = event;
+  return event;
+}

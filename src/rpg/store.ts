@@ -33,6 +33,12 @@ function hydrate(raw: Partial<GameState>): GameState {
     characters[id] = {
       ...saved,
       userId: saved.userId ?? id,
+      race: saved.race ?? "human",
+      god: saved.god ?? null,
+      favor: saved.favor ?? 0,
+      guildId: saved.guildId ?? null,
+      spouse: saved.spouse ?? null,
+      loveScore: saved.loveScore ?? 0,
       crates,
       backpack: Array.isArray(saved.backpack) ? saved.backpack : [],
       expedition: saved.expedition ?? null,
@@ -45,7 +51,14 @@ function hydrate(raw: Partial<GameState>): GameState {
       },
     };
   }
-  return { characters };
+  return {
+    characters,
+    guilds: raw.guilds ?? {},
+    market: Array.isArray(raw.market) ? raw.market : [],
+    nextListingId: raw.nextListingId ?? 1,
+    raid: raw.raid ?? null,
+    tournament: raw.tournament ?? null,
+  };
 }
 
 export function world(): GameState {

@@ -1,6 +1,7 @@
 import {
   ARMOR_NOUNS,
   CLASSES,
+  RACES,
   PERK_BY_TIER,
   RARITY_MULTIPLIER,
   RARITY_PREFIX,
@@ -13,6 +14,7 @@ import {
   RARITIES,
   type Character,
   type ClassId,
+  type Item as _Item,
   type Item,
   type ItemKind,
   type Rarity,
@@ -42,6 +44,17 @@ export function between(rng: Rng, min: number, max: number): number {
 
 export function pick<T>(rng: Rng, items: readonly T[]): T {
   return items[randInt(rng, items.length)] as T;
+}
+
+/** In place, Fisher-Yates. Used to seed a tournament bracket fairly. */
+export function shuffle<T>(rng: Rng, items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = randInt(rng, i + 1);
+    const a = items[i] as T;
+    items[i] = items[j] as T;
+    items[j] = a;
+  }
+  return items;
 }
 
 export function clamp(value: number, low: number, high: number): number {
@@ -108,11 +121,49 @@ export function className(character: Character): string {
 // -------------------------------------------------------------- statistics ---
 
 export function attack(character: Character): number {
-  return (character.weapon?.value ?? 0) + perkValue(character, "damage");
+  return (
+    (character.weapon?.value ?? 0) +
+    perkValue(character, "damage") +
+    RACES[character.race].attack
+  );
 }
 
 export function defense(character: Character): number {
-  return (character.armor?.value ?? 0) + perkValue(character, "defense");
+  return (
+    (character.armor?.value ?? 0) +
+    perkValue(character, "defense") +
+    RACES[character.race].defense
+  );
+}
+
+/**
+ * Luck bought with sacrificed items, in odds points.
+ *
+ * Linear and capped. A curve that front-loads the benefit would make the first
+ * few sacrifices feel great and everything after them pointless, which is the
+ * opposite of what a long-run sink is for.
+ */
+export const MAX_FAVOR_LUCK = 0.08;
+export const FAVOR_FOR_MAX_LUCK = 20_000;
+
+export function favorLuck(character: Character): number {
+  if (!character.god) return 0;
+  return clamp(character.favor / FAVOR_FOR_MAX_LUCK, 0, 1) * MAX_FAVOR_LUCK;
+}
+
+/** What an item is worth on an altar. More than a shop pays, and unspendable. */
+export function sacrificeValue(item: _Item): number {
+  return Math.max(1, Math.floor(item.value * 2 * RARITY_MULTIPLIER[item.rarity]));
+}
+
+/**
+ * What changing gods costs.
+ *
+ * Scaled by favour so that abandoning a god you have invested in is a real
+ * decision, and free for anyone who has not.
+ */
+export function godSwitchCost(character: Character): number {
+  return Math.floor(character.favor / 2);
 }
 
 /** The single number an adventure is graded against. */
@@ -177,7 +228,10 @@ export function successChance(
   const demand = difficulty * 8;
   const ratio = power(character) / (power(character) + demand);
   const reachPenalty = clamp((character.level - difficulty) * 0.015, -0.25, 0.25);
-  const luck = perkValue(character, "luck") / 400;
+  const luck =
+    perkValue(character, "luck") / 400 +
+    RACES[character.race].odds / 100 +
+    favorLuck(character);
   void t;
   return clamp(0.25 + 0.65 * ratio + reachPenalty + luck, 0.05, 0.95);
 }
@@ -207,7 +261,9 @@ export function moneyReward(
   t: Tuning = DEFAULT_TUNING,
 ): number {
   const base = t.moneyPerDifficulty * difficulty ** REWARD_EXPONENT;
-  return Math.floor(base * (1 + perkValue(character, "greed") / 100));
+  const bonus =
+    perkValue(character, "greed") + RACES[character.race].money + loveBonus(character);
+  return Math.floor(base * (1 + bonus / 100));
 }
 
 export function xpReward(
@@ -216,7 +272,9 @@ export function xpReward(
   t: Tuning = DEFAULT_TUNING,
 ): number {
   const base = t.xpPerDifficulty * difficulty ** REWARD_EXPONENT;
-  return Math.floor(base * (1 + perkValue(character, "study") / 100));
+  const bonus =
+    perkValue(character, "study") + RACES[character.race].xp + loveBonus(character);
+  return Math.floor(base * (1 + bonus / 100));
 }
 
 /** A thief's cut, taken on top of a win. Zero for everyone else. */
@@ -319,3 +377,57 @@ export function shortDuration(ms: number): string {
   if (minutes === 0) return `${hours}h`;
   return `${hours}h ${minutes}m`;
 }
+
+// ------------------------------------------------------------------ store ---
+
+/**
+ * What a crate costs to buy outright.
+ *
+ * Priced well above what its contents sell for. The shop is a coin *sink* and
+ * a way to convert a windfall into a chance at gear; if buying crates were
+ * profitable in expectation, the only correct move would be to buy them
+ * forever and the adventure loop would be decoration.
+ */
+export const CRATE_PRICE: Record<Rarity, number> = {
+  common: 500,
+  uncommon: 2_000,
+  rare: 8_000,
+  magic: 35_000,
+  legendary: 200_000,
+};
+
+// ------------------------------------------------------------------ raids ---
+
+/** A boss scaled to who is likely to turn up. */
+export function raidHp(participantLevel: number, expectedParty: number): number {
+  return Math.max(500, Math.floor(participantLevel * 120 * Math.max(1, expectedParty)));
+}
+
+/** One hit on a raid boss. Wide spread so a small party still lands blows. */
+export function raidHit(character: Character, rng: Rng): number {
+  return Math.max(1, Math.floor(power(character) * (0.6 + rng() * 0.9)));
+}
+
+// -------------------------------------------------------------- marriage ---
+
+/** Percentage bonus a married pair share, growing with accumulated affection. */
+export const MAX_LOVE_BONUS = 15;
+
+export function loveBonus(character: Character): number {
+  if (!character.spouse) return 0;
+  return clamp(character.loveScore / 5_000, 0, 1) * MAX_LOVE_BONUS;
+}
+
+// ----------------------------------------------------------------- guilds ---
+
+/** Members a guild may hold at a given level. */
+export function guildCapacity(level: number): number {
+  return 10 + level * 5;
+}
+
+/** Coin to raise a guild from `level` to the next. */
+export function guildUpgradeCost(level: number): number {
+  return Math.floor(10_000 * 1.8 ** level);
+}
+
+export const GUILD_CREATE_COST = 10_000;

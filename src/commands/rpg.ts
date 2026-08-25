@@ -7,7 +7,8 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { CLASSES, CLASS_IDS } from "../rpg/content.js";
+import { CLASS_IDS, GOD_IDS, RACE_IDS } from "../rpg/content.js";
+import { isAdmin } from "../config.js";
 import {
   claimExpedition,
   create,
@@ -15,24 +16,39 @@ import {
   equip,
   find,
   findByName,
-  leaderboard,
   openCrate,
   sell,
   sellAll,
   startExpedition,
 } from "../rpg/engine.js";
 import {
+  RANK_METRICS,
   adventureTable,
   backpack,
   claimMessage,
   classMenu,
   describe,
   profile,
+  raceMenu,
   ranking,
 } from "../rpg/format.js";
+import {
+  handleBet,
+  handleGive,
+  handleGod,
+  handleGuild,
+  handleMarket,
+  handleMarry,
+  handleRaid,
+  handleStore,
+  handleTournament,
+  handleAdmin,
+  handleTopBoard,
+  completeMarriage,
+} from "./rpgsocial.js";
 import { DEFAULT_TUNING, coin, shortDuration } from "../rpg/rules.js";
 import { save, world } from "../rpg/store.js";
-import { RARITIES, type ClassId, type Rarity } from "../rpg/types.js";
+import { RARITIES, type ClassId, type RaceId, type Rarity } from "../rpg/types.js";
 import type { Command } from "./types.js";
 
 /**
@@ -67,10 +83,46 @@ export function decodeDuel(
   return { challengerId: parts[2] as string, opponentId: parts[3] as string, stake };
 }
 
+export const MARRY_PREFIX = "rpg:marry";
+
+/** `rpg:marry:<proposer>:<target>`. Same shape and reasoning as the duel codec. */
+export function encodeMarry(proposerId: string, targetId: string): string {
+  return `${MARRY_PREFIX}:${proposerId}:${targetId}`;
+}
+
+export function decodeMarry(customId: string): { proposerId: string; targetId: string } | null {
+  const parts = customId.split(":");
+  if (parts.length !== 4 || `${parts[0]}:${parts[1]}` !== MARRY_PREFIX) return null;
+  return { proposerId: parts[2] as string, targetId: parts[3] as string };
+}
+
+/** Resolves a proposal, but only for the player who was actually asked. */
+export async function handleMarryButton(
+  interaction: ButtonInteraction,
+  target: { proposerId: string; targetId: string },
+): Promise<void> {
+  if (interaction.user.id !== target.targetId) {
+    await interaction.reply({
+      content: "That proposal is not yours to accept.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const result = await completeMarriage(target.proposerId, target.targetId);
+  if (!result.ok) {
+    await interaction.reply({ content: result.text, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.update({ content: result.text, components: [] });
+}
+
 export const command: Command = {
   data: new SlashCommandBuilder()
     .setName("idlerpg")
     .setDescription("Send a character out, come back to what it found")
+    // Ten top-level subcommands and nine groups: 19 of Discord's 25 option
+    // slots. The core loop stays flat because it is what people run daily;
+    // everything that feeds it is grouped so the list stays readable.
     .addSubcommand((s) =>
       s
         .setName("start")
@@ -80,13 +132,20 @@ export const command: Command = {
             .setName("class")
             .setDescription("What your character is good at")
             .setRequired(true)
-            .addChoices(...CLASS_IDS.map((id) => ({ name: `${id} — ${CLASSES[id].summary.slice(0, 60)}`, value: id }))),
+            .addChoices(...CLASS_IDS.map((id) => ({ name: id, value: id }))),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("race")
+            .setDescription("A smaller, permanent bonus")
+            .addChoices(...RACE_IDS.map((id) => ({ name: id, value: id }))),
         )
         .addStringOption((o) =>
           o.setName("name").setDescription("Character name. Defaults to your Discord name").setMaxLength(24),
         ),
     )
     .addSubcommand((s) => s.setName("classes").setDescription("What each class does"))
+    .addSubcommand((s) => s.setName("races").setDescription("What each race does"))
     .addSubcommand((s) =>
       s
         .setName("profile")
@@ -104,38 +163,17 @@ export const command: Command = {
     )
     .addSubcommand((s) => s.setName("status").setDescription("How long until you are back"))
     .addSubcommand((s) => s.setName("claim").setDescription("Collect what you found"))
-    .addSubcommand((s) => s.setName("backpack").setDescription("What you are carrying"))
     .addSubcommand((s) =>
       s
-        .setName("equip")
-        .setDescription("Wear something from your backpack")
-        .addIntegerOption((o) => o.setName("item").setDescription("Item number").setRequired(true).setMinValue(1)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("sell")
-        .setDescription("Sell one item")
-        .addIntegerOption((o) => o.setName("item").setDescription("Item number").setRequired(true).setMinValue(1)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("sellall")
-        .setDescription("Sell the junk")
-        .addIntegerOption((o) =>
-          o.setName("keep_above").setDescription("Keep anything better than this value").setMinValue(0),
-        ),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("open")
-        .setDescription("Open a crate")
+        .setName("top")
+        .setDescription("The realm, ranked")
         .addStringOption((o) =>
           o
-            .setName("rarity")
-            .setDescription("Which crate")
-            .setRequired(true)
-            .addChoices(...RARITIES.map((r) => ({ name: r, value: r }))),
-        ),
+            .setName("by")
+            .setDescription("Which board (default level)")
+            .addChoices(...RANK_METRICS.map((m) => ({ name: m, value: m }))),
+        )
+        .addIntegerOption((o) => o.setName("count").setDescription("How many (default 10)").setMinValue(1).setMaxValue(25)),
     )
     .addSubcommand((s) =>
       s
@@ -144,20 +182,342 @@ export const command: Command = {
         .addUserOption((o) => o.setName("player").setDescription("Who to challenge").setRequired(true))
         .addIntegerOption((o) => o.setName("stake").setDescription("Coin each").setRequired(true).setMinValue(1)),
     )
-    .addSubcommand((s) =>
-      s
-        .setName("top")
-        .setDescription("The realm, ranked")
-        .addIntegerOption((o) => o.setName("count").setDescription("How many (default 10)").setMinValue(1).setMaxValue(25)),
+    .addSubcommandGroup((g) =>
+      g
+        .setName("item")
+        .setDescription("Your gear")
+        .addSubcommand((s) => s.setName("backpack").setDescription("What you are carrying"))
+        .addSubcommand((s) =>
+          s
+            .setName("equip")
+            .setDescription("Wear something from your backpack")
+            .addIntegerOption((o) => o.setName("item").setDescription("Item number").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("sell")
+            .setDescription("Sell one item to the shop")
+            .addIntegerOption((o) => o.setName("item").setDescription("Item number").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("sellall")
+            .setDescription("Sell the junk")
+            .addIntegerOption((o) => o.setName("keep_above").setDescription("Keep anything better than this").setMinValue(0)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("open")
+            .setDescription("Open a crate")
+            .addStringOption((o) =>
+              o.setName("rarity").setDescription("Which crate").setRequired(true).addChoices(...RARITIES.map((r) => ({ name: r, value: r }))),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("give")
+            .setDescription("Hand coin or an item to another player")
+            .addUserOption((o) => o.setName("player").setDescription("Who to give to").setRequired(true))
+            .addIntegerOption((o) => o.setName("coin").setDescription("How much coin").setMinValue(1))
+            .addIntegerOption((o) => o.setName("item").setDescription("Item number").setMinValue(1)),
+        ),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("god")
+        .setDescription("Faith, sacrifice, and better odds")
+        .addSubcommand((s) => s.setName("list").setDescription("Who you could follow"))
+        .addSubcommand((s) => s.setName("status").setDescription("Your standing"))
+        .addSubcommand((s) =>
+          s
+            .setName("follow")
+            .setDescription("Swear to a god")
+            .addStringOption((o) =>
+              o.setName("god").setDescription("Which one").setRequired(true).addChoices(...GOD_IDS.map((id) => ({ name: id, value: id }))),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("sacrifice")
+            .setDescription("Give up items for favour")
+            .addStringOption((o) =>
+              o.setName("items").setDescription("Item numbers, space or comma separated").setRequired(true).setMaxLength(200),
+            ),
+        ),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("store")
+        .setDescription("Buy crates with coin")
+        .addSubcommand((s) => s.setName("list").setDescription("What is for sale"))
+        .addSubcommand((s) =>
+          s
+            .setName("buy")
+            .setDescription("Buy crates")
+            .addStringOption((o) =>
+              o.setName("rarity").setDescription("Which crate").setRequired(true).addChoices(...RARITIES.map((r) => ({ name: r, value: r }))),
+            )
+            .addIntegerOption((o) => o.setName("count").setDescription("How many (default 1)").setMinValue(1).setMaxValue(50)),
+        ),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("guild")
+        .setDescription("Found one, run one, fight one")
+        .addSubcommand((s) =>
+          s
+            .setName("create")
+            .setDescription("Found a guild")
+            .addStringOption((o) => o.setName("name").setDescription("Guild name").setRequired(true).setMaxLength(32)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("join")
+            .setDescription("Join a guild")
+            .addStringOption((o) => o.setName("name").setDescription("Guild name").setRequired(true).setMaxLength(32)),
+        )
+        .addSubcommand((s) => s.setName("leave").setDescription("Leave your guild"))
+        .addSubcommand((s) =>
+          s
+            .setName("info")
+            .setDescription("A guild's roster and bank")
+            .addStringOption((o) => o.setName("name").setDescription("Guild name, or blank for yours").setMaxLength(32)),
+        )
+        .addSubcommand((s) => s.setName("list").setDescription("Every guild"))
+        .addSubcommand((s) =>
+          s
+            .setName("kick")
+            .setDescription("Remove a member")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("promote")
+            .setDescription("Make somebody an officer")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("demote")
+            .setDescription("Remove an officer")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("handover")
+            .setDescription("Give the guild to somebody else")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) => s.setName("disband").setDescription("Dissolve the guild"))
+        .addSubcommand((s) =>
+          s
+            .setName("deposit")
+            .setDescription("Put coin in the bank")
+            .addIntegerOption((o) => o.setName("coin").setDescription("How much").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("withdraw")
+            .setDescription("Take coin out (leaders and officers)")
+            .addIntegerOption((o) => o.setName("coin").setDescription("How much").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) => s.setName("upgrade").setDescription("Raise the member cap, from the bank"))
+        .addSubcommand((s) =>
+          s
+            .setName("ally")
+            .setDescription("Fly under another guild's banner")
+            .addStringOption((o) => o.setName("name").setDescription("Guild name").setRequired(true).setMaxLength(32)),
+        )
+        .addSubcommand((s) => s.setName("unally").setDescription("Leave the alliance"))
+        .addSubcommand((s) =>
+          s
+            .setName("battle")
+            .setDescription("Wager bank against another guild")
+            .addStringOption((o) => o.setName("name").setDescription("Guild name").setRequired(true).setMaxLength(32))
+            .addIntegerOption((o) => o.setName("stake").setDescription("Coin from each bank").setRequired(true).setMinValue(1)),
+        ),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("market")
+        .setDescription("Buy and sell between players")
+        .addSubcommand((s) => s.setName("list").setDescription("What is listed"))
+        .addSubcommand((s) =>
+          s
+            .setName("sell")
+            .setDescription("List an item")
+            .addIntegerOption((o) => o.setName("item").setDescription("Item number").setRequired(true).setMinValue(1))
+            .addIntegerOption((o) => o.setName("price").setDescription("Asking price").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("buy")
+            .setDescription("Buy a listing")
+            .addIntegerOption((o) => o.setName("listing").setDescription("Listing number").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("unlist")
+            .setDescription("Take your listing down")
+            .addIntegerOption((o) => o.setName("listing").setDescription("Listing number").setRequired(true).setMinValue(1)),
+        ),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("raid")
+        .setDescription("Everyone against one boss")
+        .addSubcommand((s) => s.setName("call").setDescription("Summon a boss, and seed the pot"))
+        .addSubcommand((s) => s.setName("hit").setDescription("Take a swing"))
+        .addSubcommand((s) => s.setName("status").setDescription("How the fight is going")),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("tournament")
+        .setDescription("A bracket, for money")
+        .addSubcommand((s) =>
+          s
+            .setName("open")
+            .setDescription("Open entries")
+            .addIntegerOption((o) => o.setName("buy_in").setDescription("Coin per entry").setMinValue(0)),
+        )
+        .addSubcommand((s) => s.setName("join").setDescription("Enter"))
+        .addSubcommand((s) => s.setName("run").setDescription("Run the bracket"))
+        .addSubcommand((s) => s.setName("status").setDescription("Who is in")),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("marry")
+        .setDescription("A joint bonus, and somebody to spend on")
+        .addSubcommand((s) =>
+          s
+            .setName("propose")
+            .setDescription("Ask somebody")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("court")
+            .setDescription("Spend coin to raise the bonus for both of you")
+            .addIntegerOption((o) => o.setName("coin").setDescription("How much").setRequired(true).setMinValue(1)),
+        )
+        .addSubcommand((s) => s.setName("divorce").setDescription("End it"))
+        .addSubcommand((s) => s.setName("status").setDescription("How it is going")),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("admin")
+        .setDescription("Operator controls")
+        .addSubcommand((s) =>
+          s
+            .setName("grant")
+            .setDescription("Give or take coin")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true))
+            .addIntegerOption((o) => o.setName("coin").setDescription("Negative takes it away").setRequired(true)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("setlevel")
+            .setDescription("Set a character's level")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true))
+            .addIntegerOption((o) => o.setName("level").setDescription("New level").setRequired(true).setMinValue(1).setMaxValue(200)),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("spawn")
+            .setDescription("Create an item in somebody's backpack")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true))
+            .addIntegerOption((o) => o.setName("value").setDescription("Item value").setRequired(true).setMinValue(1).setMaxValue(10000))
+            .addStringOption((o) =>
+              o.setName("rarity").setDescription("Rarity").setRequired(true).addChoices(...RARITIES.map((r) => ({ name: r, value: r }))),
+            )
+            .addStringOption((o) =>
+              o.setName("kind").setDescription("Weapon or armor").setRequired(true).addChoices(
+                { name: "weapon", value: "weapon" },
+                { name: "armor", value: "armor" },
+              ),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("reset")
+            .setDescription("Delete a character permanently")
+            .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
+        )
+        .addSubcommand((s) => s.setName("clear").setDescription("Clear a stuck raid or tournament")),
+    )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("bet")
+        .setDescription("Wagers at fair odds")
+        .addSubcommand((s) =>
+          s
+            .setName("flip")
+            .setDescription("Coin flip, even money")
+            .addIntegerOption((o) => o.setName("stake").setDescription("Coin").setRequired(true).setMinValue(1))
+            .addStringOption((o) =>
+              o.setName("call").setDescription("Heads or tails").setRequired(true).addChoices(
+                { name: "heads", value: "heads" },
+                { name: "tails", value: "tails" },
+              ),
+            ),
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("dice")
+            .setDescription("Guess a die roll; pays sides-1 to 1")
+            .addIntegerOption((o) => o.setName("stake").setDescription("Coin").setRequired(true).setMinValue(1))
+            .addIntegerOption((o) => o.setName("guess").setDescription("Your number").setRequired(true).setMinValue(1))
+            .addIntegerOption((o) => o.setName("sides").setDescription("Die size (default 6)").setMinValue(2).setMaxValue(100)),
+        ),
     ),
 
   async execute(interaction) {
+    const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
+
+    if (group) {
+      switch (group) {
+        case "item":
+          return handleItem(interaction, sub);
+        case "god":
+          return handleGod(interaction, sub);
+        case "store":
+          return handleStore(interaction, sub);
+        case "guild":
+          return handleGuild(interaction, sub);
+        case "market":
+          return handleMarket(interaction, sub);
+        case "raid":
+          return handleRaid(interaction, sub);
+        case "tournament":
+          return handleTournament(interaction, sub);
+        case "marry":
+          return handleMarryGroup(interaction, sub);
+        case "bet":
+          return handleBet(interaction, sub);
+        case "admin": {
+          // Checked here rather than with `adminOnly` on the command: the rest
+          // of /idlerpg is for everyone, and that flag is all-or-nothing.
+          if (!isAdmin(interaction.user.id)) {
+            await interaction.reply({
+              content: "The admin controls are restricted to the bot's admins.",
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          return handleAdmin(interaction, sub);
+        }
+      }
+    }
+
     switch (sub) {
       case "start":
         return doStart(interaction);
       case "classes":
         await interaction.reply({ content: classMenu(), flags: MessageFlags.Ephemeral });
+        return;
+      case "races":
+        await interaction.reply({ content: raceMenu(), flags: MessageFlags.Ephemeral });
         return;
       case "profile":
         return doProfile(interaction);
@@ -169,25 +529,70 @@ export const command: Command = {
         return doStatus(interaction);
       case "claim":
         return doClaim(interaction);
-      case "backpack":
-        return doBackpack(interaction);
-      case "equip":
-        return doEquip(interaction);
-      case "sell":
-      case "sellall":
-        return doSell(interaction, sub === "sellall");
-      case "open":
-        return doOpen(interaction);
       case "duel":
         return doDuel(interaction);
       case "top":
-        return doTop(interaction);
+        return handleTopBoard(interaction);
       default:
         await interaction.reply({ content: classMenu(), flags: MessageFlags.Ephemeral });
         return;
     }
   },
 };
+
+/** The `item` group, whose handlers already lived here. */
+async function handleItem(interaction: ChatInputCommandInteraction, sub: string): Promise<void> {
+  switch (sub) {
+    case "backpack":
+      return doBackpack(interaction);
+    case "equip":
+      return doEquip(interaction);
+    case "sell":
+      return doSell(interaction, false);
+    case "sellall":
+      return doSell(interaction, true);
+    case "open":
+      return doOpen(interaction);
+    case "give":
+      return handleGive(interaction);
+  }
+}
+
+/** Proposing needs consent, so it is a button; the rest is plain. */
+async function handleMarryGroup(interaction: ChatInputCommandInteraction, sub: string): Promise<void> {
+  if (sub !== "propose") return handleMarry(interaction, sub);
+
+  const target = interaction.options.getUser("player", true);
+  const state = world();
+  if (!find(state, interaction.user.id)) {
+    await interaction.reply({ content: NO_CHARACTER, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (target.bot || !find(state, target.id)) {
+    await interaction.reply({
+      content: `${target.username} has no character.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (target.id === interaction.user.id) {
+    await interaction.reply({ content: "You cannot marry yourself.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.reply({
+    content: `<@${target.id}> — **${interaction.user.username}** is proposing.`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(encodeMarry(interaction.user.id, target.id))
+          .setLabel("Accept")
+          .setEmoji("💍")
+          .setStyle(ButtonStyle.Success),
+      ),
+    ],
+  });
+}
 
 type Interaction = ChatInputCommandInteraction;
 
@@ -200,6 +605,7 @@ const NO_CHARACTER = "You have no character yet. `/idlerpg start` makes one.";
 
 async function doStart(interaction: Interaction): Promise<void> {
   const classId = interaction.options.getString("class", true) as ClassId;
+  const raceId = (interaction.options.getString("race") ?? "human") as RaceId;
   const name = (interaction.options.getString("name") ?? interaction.user.username).trim();
 
   // Names go into channel messages, so anything that could impersonate another
@@ -212,7 +618,7 @@ async function doStart(interaction: Interaction): Promise<void> {
     return;
   }
 
-  const result = create(world(), interaction.user.id, name, classId, ctx());
+  const result = create(world(), interaction.user.id, name, classId, ctx(), raceId);
   if (!result.ok) {
     await interaction.reply({ content: result.reason, flags: MessageFlags.Ephemeral });
     return;
@@ -221,7 +627,7 @@ async function doStart(interaction: Interaction): Promise<void> {
 
   await interaction.reply({
     content: [
-      `**${result.character.name}** the ${classId} is ready, with ${coin(result.character.money)} and a starting kit.`,
+      `**${result.character.name}** the ${raceId} ${classId} is ready, with ${coin(result.character.money)} and a starting kit.`,
       "",
       "`/idlerpg adventures` shows where you can go and what the odds are.",
     ].join("\n"),
@@ -462,7 +868,3 @@ export async function handleDuelButton(
   });
 }
 
-async function doTop(interaction: Interaction): Promise<void> {
-  const count = interaction.options.getInteger("count") ?? 10;
-  await interaction.reply(ranking(leaderboard(world(), count)));
-}

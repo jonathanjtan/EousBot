@@ -20,6 +20,17 @@
 
 export type ClassId = "warrior" | "mage" | "thief" | "ranger" | "ritualist" | "raider";
 
+/**
+ * Race is the second, smaller half of who you are.
+ *
+ * Deliberately weaker than class: two choices at creation only work if one of
+ * them is clearly the big one, or a new player is made to agonise over a
+ * decision they have no information to make.
+ */
+export type RaceId = "human" | "elf" | "dwarf" | "orc" | "revenant";
+
+export type GodId = "harvest" | "forge" | "tide" | "ledger" | "quiet" | "wheel";
+
 export type Rarity = "common" | "uncommon" | "rare" | "magic" | "legendary";
 
 export const RARITIES: readonly Rarity[] = [
@@ -76,6 +87,17 @@ export interface Character {
   /** Unopened crates, by rarity. */
   crates: Record<Rarity, number>;
   expedition: Expedition | null;
+  race: RaceId;
+  /** Whom you follow, if anyone. Switching costs coin. */
+  god: GodId | null;
+  /** Sacrificed value, accumulated. Buys luck, which buys better odds. */
+  favor: number;
+  /** Guild id, or null. */
+  guildId: string | null;
+  /** Spouse's user id, or null. */
+  spouse: string | null;
+  /** Accumulated affection, which pays a joint bonus. */
+  loveScore: number;
   /** Next id to hand out for an item this character receives. */
   nextItemId: number;
   createdAt: number;
@@ -87,8 +109,68 @@ export interface Character {
   };
 }
 
+/** A player-listed item, waiting for a buyer. */
+export interface Listing {
+  id: number;
+  sellerId: string;
+  item: Item;
+  price: number;
+  listedAt: number;
+}
+
+export interface Guild {
+  id: string;
+  name: string;
+  leaderId: string;
+  /** Members who may invite and kick. The leader is always one. */
+  officerIds: string[];
+  memberIds: string[];
+  bank: number;
+  /** Coin spent upgrading, which raises the member cap and the bank ceiling. */
+  level: number;
+  /** The guild leading the alliance this guild belongs to, or null. */
+  allianceOf: string | null;
+  createdAt: number;
+}
+
+/** A boss everyone hits together. One at a time, realm-wide. */
+export interface Raid {
+  bossName: string;
+  hp: number;
+  maxHp: number;
+  /** Damage dealt per participant, which decides the payout split. */
+  damage: Record<string, number>;
+  /** When the boss escapes if it has not been killed. */
+  endsAt: number;
+  /** Coin seeded into the reward pool. */
+  pot: number;
+  startedAt: number;
+}
+
+export interface TournamentEntry {
+  userId: string;
+  eliminated: boolean;
+}
+
+export interface Tournament {
+  hostId: string;
+  buyIn: number;
+  entries: TournamentEntry[];
+  /** Open until this moment, then it runs. */
+  closesAt: number;
+  /** Round-by-round transcript, kept so the result can be shown. */
+  log: string[];
+  finished: boolean;
+  winnerId: string | null;
+}
+
 export interface GameState {
   characters: Record<string, Character>;
+  guilds: Record<string, Guild>;
+  market: Listing[];
+  nextListingId: number;
+  raid: Raid | null;
+  tournament: Tournament | null;
 }
 
 /** Something the engine wants said. Delivery is not its problem. */

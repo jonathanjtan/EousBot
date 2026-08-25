@@ -30,6 +30,7 @@ import type {
   Announcement,
   Character,
   ClassId,
+  RaceId,
   GameState,
   Item,
   Rarity,
@@ -53,7 +54,14 @@ export interface Ctx {
 }
 
 export function newGame(): GameState {
-  return { characters: {} };
+  return {
+    characters: {},
+    guilds: {},
+    market: [],
+    nextListingId: 1,
+    raid: null,
+    tournament: null,
+  };
 }
 
 export function newCharacter(
@@ -61,11 +69,18 @@ export function newCharacter(
   name: string,
   classId: ClassId,
   ctx: Ctx,
+  raceId: RaceId = "human",
 ): Character {
   const character: Character = {
     userId,
     name,
     classId,
+    race: raceId,
+    god: null,
+    favor: 0,
+    guildId: null,
+    spouse: null,
+    loveScore: 0,
     tier: 0,
     level: 1,
     xp: 0,
@@ -492,6 +507,7 @@ export function create(
   name: string,
   classId: ClassId,
   ctx: Ctx,
+  raceId: RaceId = "human",
 ): CreateResult {
   if (state.characters[userId]) {
     return { ok: false, reason: "You already have a character. `/idlerpg profile` shows it." };
@@ -501,7 +517,7 @@ export function create(
   }
   if (!CLASSES[classId]) return { ok: false, reason: "That is not a class." };
 
-  const character = newCharacter(userId, name, classId, ctx);
+  const character = newCharacter(userId, name, classId, ctx, raceId);
   state.characters[userId] = character;
   return { ok: true, character };
 }

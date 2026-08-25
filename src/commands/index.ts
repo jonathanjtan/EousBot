@@ -14,6 +14,7 @@ import { command as request } from "./request.js";
 import { command as restock } from "./restock.js";
 import { command as revise } from "./revise.js";
 import { command as roll } from "./roll.js";
+import { command as rpg } from "./rpg.js";
 import { command as smash } from "./smash.js";
 import { command as status } from "./status.js";
 import { command as stock } from "./stock.js";
@@ -47,6 +48,7 @@ export const commands: Command[] = [
   bugcat,
   avatar,
   idlerpg,
+  rpg,
   strip,
   embed,
   restock,

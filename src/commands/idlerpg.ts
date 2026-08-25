@@ -30,6 +30,11 @@ import type { Command } from "./types.js";
 /**
  * Idle RPG, jotun's game from idlerpg.net, played through slash commands.
  *
+ * Lives at `/irc-idlerpg` rather than `/idlerpg`: this is the 2004 IRC design
+ * preserved intact, and src/rpg/ is the one built for a platform where
+ * everybody is online all the time. Neither replaces the other -- see
+ * src/rpg/types.ts for the measurement that produced both.
+ *
  * One command with subcommands rather than a dozen top-level ones: the game
  * has a lot of verbs, and a bot that already owns two dozen commands should
  * not spend twelve more of Discord's allowance on a single feature.
@@ -48,8 +53,8 @@ const ALIGNMENTS: Alignment[] = ["good", "neutral", "evil"];
  * unlike a PR button these carry no payload: whoever clicked is the whole
  * message, and Discord already tells us who that was.
  */
-export const JOIN_BUTTON_ID = "idlerpg:join";
-export const JOIN_MODAL_ID = "idlerpg:join-modal";
+export const JOIN_BUTTON_ID = "ircrpg:join";
+export const JOIN_MODAL_ID = "ircrpg:join-modal";
 const CLASS_INPUT_ID = "class";
 const NAME_INPUT_ID = "name";
 
@@ -110,7 +115,7 @@ export function buildJoinModal(defaultName: string): ModalBuilder {
     );
 }
 
-/** Shared by the modal and `/idlerpg register`, so both enforce one rule. */
+/** Shared by the modal and `/irc-idlerpg register`, so both enforce one rule. */
 function attemptRegister(userId: string, rawName: string, rawClass: string): string {
   const name = rawName.trim();
   const charClass = rawClass.trim();
@@ -130,7 +135,7 @@ function attemptRegister(userId: string, rawName: string, rawClass: string): str
     `**${result.player.name}**, the ${result.player.charClass}, has entered the realm.`,
     `Level 1 in ${duration(result.player.next)} — provided you say nothing.`,
     "",
-    "_`/idlerpg help` explains what talking costs you._",
+    "_`/irc-idlerpg help` explains what talking costs you._",
   ].join("\n");
 }
 
@@ -150,7 +155,7 @@ export async function handleJoinModal(interaction: ModalSubmitInteraction): Prom
 const HELP = [
   "**Idle RPG** — you level up by doing nothing.",
   "",
-  "`/idlerpg register` makes a character, and from that moment your clock runs.",
+  "`/irc-idlerpg register` makes a character, and from that moment your clock runs.",
   "There is no skill, no grinding and nothing to click: time spent logged in and",
   "quiet is the only thing that advances you. Levelling finds you an item and",
   "picks you a fight; the rest happens to you.",
@@ -171,7 +176,7 @@ const HELP = [
   "",
   "**Quests** take four players over level 40 and pay a quarter off their clocks.",
   "",
-  "`/idlerpg whoami` · `/idlerpg top` · `/idlerpg quest` · `/idlerpg map`",
+  "`/irc-idlerpg whoami` · `/irc-idlerpg top` · `/irc-idlerpg quest` · `/irc-idlerpg map`",
 ].join("\n");
 
 /** Resolves a `player` option to a character, or explains why it could not. */
@@ -182,13 +187,13 @@ function resolve(name: string | null, userId: string): Player | string {
     return found ?? `Nobody in the realm is called ${name}.`;
   }
   const mine = state.players[userId];
-  return mine ?? "You have no character yet. `/idlerpg register` starts one.";
+  return mine ?? "You have no character yet. `/irc-idlerpg register` starts one.";
 }
 
 export const command: Command = {
   data: new SlashCommandBuilder()
-    .setName("idlerpg")
-    .setDescription("Idle RPG — level up by doing absolutely nothing")
+    .setName("irc-idlerpg")
+    .setDescription("The 2004 IRC original — level up by doing absolutely nothing")
     .addSubcommand((s) =>
       s
         .setName("register")
@@ -310,7 +315,7 @@ export const command: Command = {
 
     if (group === "admin") {
       // Checked here rather than with `adminOnly` on the command: the rest of
-      // /idlerpg is for everyone, and the flag is all-or-nothing.
+      // /irc-idlerpg is for everyone, and the flag is all-or-nothing.
       if (!isAdmin(interaction.user.id)) {
         await interaction.reply({
           content: "The admin controls are restricted to the bot's admins.",
@@ -364,7 +369,7 @@ async function doLogin(interaction: Interaction): Promise<void> {
   const player = state.players[interaction.user.id];
   if (!player) {
     await interaction.reply({
-      content: "You have no character yet. `/idlerpg register` starts one.",
+      content: "You have no character yet. `/irc-idlerpg register` starts one.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -404,7 +409,7 @@ async function doAlign(interaction: Interaction): Promise<void> {
   const state = realm();
   if (!state.players[interaction.user.id]) {
     await interaction.reply({
-      content: "You have no character yet. `/idlerpg register` starts one.",
+      content: "You have no character yet. `/irc-idlerpg register` starts one.",
       flags: MessageFlags.Ephemeral,
     });
     return;

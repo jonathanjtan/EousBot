@@ -12,8 +12,8 @@ import {
  * Rendering a player and a realm for Discord.
  *
  * Split from the engine so the game can be tested without discord.js, and from
- * the command so the same character sheet can be produced by /idlerpg whoami,
- * /idlerpg status and anything added later.
+ * the command so the same character sheet can be produced by /irc-idlerpg whoami,
+ * /irc-idlerpg status and anything added later.
  */
 
 export function characterSheet(
@@ -77,7 +77,7 @@ export function leaderboard(state: GameState, limit: number): string {
     .sort((a, b) => b.level - a.level || a.next - b.next)
     .slice(0, limit);
 
-  if (ranked.length === 0) return "Nobody has registered yet. `/idlerpg register` starts a character.";
+  if (ranked.length === 0) return "Nobody has registered yet. `/irc-idlerpg register` starts a character.";
 
   return [
     "**Idle RPG — the realm**",

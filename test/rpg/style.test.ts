@@ -97,6 +97,31 @@ test("nothing the game says uses the banned vocabulary", () => {
   assert.deepEqual(offences, [], `banned vocabulary:\n${offences.join("\n")}`);
 });
 
+/**
+ * Named tics, checked in comments as well as strings.
+ *
+ * Unlike the punctuation rules, this one scans every line. These words showed
+ * up 21 times in comments and 4 times in commit messages before anyone said
+ * anything, which is where a tic lives before it reaches a user.
+ */
+test("nothing here flags its own intent instead of stating the thing", () => {
+  const tics = ["deliberately", "on purpose", "load-bearing", "quietly", "genuinely", "theatre"];
+  const offences: string[] = [];
+
+  for (const path of USER_FACING) {
+    readFileSync(path, "utf8")
+      .split("\n")
+      .forEach((text, i) => {
+        for (const tic of tics) {
+          if (new RegExp(`\\b${tic}\\b`, "i").test(text)) {
+            offences.push(`${path}:${i + 1} "${tic}"`);
+          }
+        }
+      });
+  }
+  assert.deepEqual(offences, [], `intent-flagging words:\n${offences.join("\n")}`);
+});
+
 test("the help does not use 'not just X, but Y', or hedge in stacks", () => {
   const help = readFileSync("src/rpg/help.ts", "utf8");
   assert.doesNotMatch(help, /not just .{1,40}, but/i, "say the thing you mean");

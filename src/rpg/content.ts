@@ -206,8 +206,8 @@ export const LOSS_LINES: readonly string[] = [
  *
  * Every race gives a percentage bonus to a different axis, and all of them are
  * modest. A new player picks a class and a race in the same breath with no
- * information about either, so exactly one of those choices is allowed to be
- * load-bearing. Class is that one.
+ * information about either. Only one of them should decide much, and class is
+ * the one that does.
  */
 export interface RaceDef {
   id: RaceId;

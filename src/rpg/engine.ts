@@ -233,8 +233,8 @@ export type ClaimResult =
  *
  * The roll happens here, on claim, rather than when the adventure was
  * dispatched. That is deliberate and it is the difference between a wait that
- * is tense and a wait that is a lie: if the outcome were decided up front, the
- * intervening hours would be theatre.
+ * is tense and a wait that is a lie. If the outcome were decided up front, the
+ * intervening hours would change nothing.
  */
 export function claimExpedition(state: GameState, userId: string, ctx: Ctx): ClaimResult {
   const character = find(state, userId);
@@ -462,8 +462,8 @@ export type DuelResult = { ok: true; outcome: DuelOutcome } | { ok: false; reaso
  * Both must cover the stake, and the roll is power scattered widely enough that
  * the better-equipped duellist is favoured without it being settled in advance.
  * This is the one part of the game that needs another person, and on a Discord
- * server that is the abundant resource -- so it is deliberately the cheapest
- * thing to do and the only one with no cooldown.
+ * server other people are the abundant resource. So it is the cheapest thing to
+ * do and the only one with no cooldown.
  */
 export function duel(
   state: GameState,

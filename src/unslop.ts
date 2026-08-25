@@ -33,6 +33,8 @@ Never use these:
 - "serves as", "stands as", "boasts", "features". It is "is" or "has".
 - Stacked hedges: "could potentially", "it might be argued that". Say "may",
   or commit to the claim.
+- Flagging your own intent: "deliberately", "on purpose", "load-bearing",
+  "quietly", "genuinely", "theatre". State the thing, or give the reason.
 
 Do this instead:
 - One idea per sentence. Active voice. Say a thing once, then stop saying it.

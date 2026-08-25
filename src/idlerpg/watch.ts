@@ -154,12 +154,64 @@ async function whisper(item: Announcement): Promise<void> {
   }
 }
 
-async function announce(text: string): Promise<void> {
+/**
+ * Resolves the game channel, saying clearly why it could not.
+ *
+ * The three failure modes are worth separating because they have different
+ * fixes and only one of them throws: a wrong id resolves to nothing, a right
+ * id pointing at a category or a voice channel resolves to something that
+ * cannot be posted to, and a channel the bot cannot see raises. Returning null
+ * silently for the first two -- which is what this code used to do -- means a
+ * misconfigured realm narrates into the void forever and logs nothing at all,
+ * and that is precisely the state a fresh install is most likely to be in.
+ */
+async function gameChannel(): Promise<TextChannel | null> {
+  const id = config.idlerpg.channelId;
   try {
-    const channel = await client?.channels.fetch(config.idlerpg.channelId);
-    if (channel?.isTextBased() && "send" in channel) {
-      await (channel as TextChannel).send(text);
+    const channel = await client?.channels.fetch(id);
+    if (!channel) {
+      log.warn("IDLERPG_CHANNEL_ID does not resolve to a channel", { channelId: id });
+      return null;
     }
+    if (!channel.isTextBased() || !("send" in channel)) {
+      log.warn("IDLERPG_CHANNEL_ID is not a channel the bot can post to", {
+        channelId: id,
+        type: channel.type,
+      });
+      return null;
+    }
+    return channel as TextChannel;
+  } catch (err) {
+    log.warn("Could not reach the Idle RPG channel", { channelId: id, err: String(err) });
+    return null;
+  }
+}
+
+/**
+ * Confirms at boot that the realm has somewhere to talk.
+ *
+ * Cheap, and it moves the discovery of a bad channel id from "somebody
+ * eventually notices the game has been silent for a week" to the first ten
+ * lines of the log after a deploy.
+ */
+export async function checkChannel(): Promise<void> {
+  if (!config.idlerpg.enabled) return;
+  const channel = await gameChannel();
+  if (channel) {
+    log.info("Idle RPG channel ready", { channel: channel.name, channelId: channel.id });
+  } else {
+    log.error(
+      "Idle RPG has nowhere to post. The game will run and nobody will see it. " +
+        "Check IDLERPG_CHANNEL_ID and that the bot can view and send in that channel.",
+    );
+  }
+}
+
+async function announce(text: string): Promise<void> {
+  const channel = await gameChannel();
+  if (!channel) return;
+  try {
+    await channel.send(text);
   } catch (err) {
     log.warn("Could not deliver an Idle RPG announcement", { err: String(err) });
   }

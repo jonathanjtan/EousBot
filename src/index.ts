@@ -29,6 +29,7 @@ import { log } from "./log.js";
 import { acquire, describe, held, release } from "./inflight.js";
 import { penalizeMessage, penalizeNick, penalizePart } from "./idlerpg/engine.js";
 import {
+  checkChannel,
   context as idlerpgContext,
   inPenaltyScope,
   isPresent,
@@ -136,6 +137,9 @@ client.once(Events.ClientReady, async (ready) => {
   // Starts the Idle RPG clock. No-op unless IDLERPG_ENABLED is set.
   startIdleRpg(client);
   if (config.idlerpg.enabled) {
+    await checkChannel().catch((err) =>
+      log.warn("Idle RPG channel check failed", { err: String(err) }),
+    );
     const guild = client.guilds.cache.get(config.discord.guildId);
     if (guild) {
       await syncAllPresence(guild).catch((err) =>

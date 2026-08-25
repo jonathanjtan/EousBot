@@ -22,6 +22,7 @@ import {
   buildJoinModal,
   handleJoinModal,
 } from "./commands/idlerpg.js";
+import { decodeDuel, handleDuelButton } from "./commands/rpg.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -431,6 +432,15 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await interaction.showModal(
           buildJoinModal(interaction.member?.user.username ?? interaction.user.username),
         );
+        return;
+      }
+
+      // A wagered duel, resolved only by the player who was challenged --
+      // handleDuelButton enforces that, since a Discord button is clickable by
+      // anyone who can see the message.
+      const challenge = decodeDuel(interaction.customId);
+      if (challenge) {
+        await handleDuelButton(interaction, challenge);
         return;
       }
 

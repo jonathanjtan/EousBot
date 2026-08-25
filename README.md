@@ -453,25 +453,29 @@ install doesn't relay 25 old posts as if they were live drops. Both the
 subscriptions and the seen-entry ids live in `state/eousbot.json`, so a
 self-deploy landing mid-drop doesn't replay the channel.
 
-## Idle RPG
+## Idle RPG — the IRC original (`/irc-idlerpg`)
 
 A port of [jotun's Idle RPG](https://idlerpg.net/) — the IRC game from 2004
 where you level up by doing nothing. Off unless `IDLERPG_ENABLED=true`.
 
+It lives at `/irc-idlerpg` because it is a museum piece, faithfully kept. The
+game people actually play is `/idlerpg`, below, and the measurement that
+produced the split is in that section.
+
 ```
-/idlerpg register class:necromancer   make a character; your clock starts now
-/idlerpg login | logout               logging out costs you time
-/idlerpg align alignment:evil         good fights better, evil fights dirtier
-/idlerpg whoami | status player:<name>
-/idlerpg items [player:<name>]
-/idlerpg top [count:10]
-/idlerpg quest                        who is questing, and how far they have got
-/idlerpg map                          a PNG of where everyone is standing
-/idlerpg help
-/idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
+/irc-idlerpg register class:necromancer   make a character; your clock starts now
+/irc-idlerpg login | logout               logging out costs you time
+/irc-idlerpg align alignment:evil         good fights better, evil fights dirtier
+/irc-idlerpg whoami | status player:<name>
+/irc-idlerpg items [player:<name>]
+/irc-idlerpg top [count:10]
+/irc-idlerpg quest                        who is questing, and how far they have got
+/irc-idlerpg map                          a PNG of where everyone is standing
+/irc-idlerpg help
+/irc-idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
 ```
 
-`/idlerpg admin panel` posts a pinnable message with an **Enter the realm**
+`/irc-idlerpg admin panel` posts a pinnable message with an **Enter the realm**
 button. That is the intended way in: one click and a two-field form, rather
 than asking everyone to discover a slash command with a required argument.
 
@@ -623,8 +627,98 @@ A tick credits real elapsed time rather than the timer interval, capped at
 `IDLERPG_MAX_CATCHUP_S`. That is what stops a self-deploy restart from costing
 everyone the minute it took, without letting a day-long outage hand them a day.
 
-`/idlerpg admin pause` freezes clocks, events and quests without stopping the
+`/irc-idlerpg admin pause` freezes clocks, events and quests without stopping the
 bot — useful before a risky deploy.
+
+## Idle RPG — the Discord one (`/idlerpg`)
+
+A second game, in `src/rpg/`, because the first one does not survive contact
+with this platform.
+
+### Why there are two
+
+IdleRPG's design rests on presence being a **costly signal**. In 2004 staying
+connected meant a running client and resisting the urge to talk in a channel
+you were sitting in, so your level encoded genuine restraint. On Discord
+presence is free and permanent. Measured on our own implementation — twelve
+always-online players who never talk, sixty days, five seeds:
+
+| Alignment | Mean level |
+|---|---|
+| good | 51.1 |
+| neutral | 50.9 |
+| evil | 50.7 |
+
+Level spread within a run: **2–3 levels out of ~51**, and the game's only
+decision is worth **0.4 levels**. The leaderboard is a registration-date sort.
+That is not a balance problem to tune, it is the design working exactly as
+intended on a platform that broke its central assumption.
+
+### The loop
+
+Choose an adventure with a duration and a risk, walk away, come back to a
+result. Decisions are *spaced* rather than absent, which is what "idle" has
+meant since Cookie Clicker.
+
+```
+/idlerpg start class:mage          make a character
+/idlerpg classes                   what each class does
+/idlerpg adventures                where you could go, with the real odds
+/idlerpg adventure difficulty:7    go
+/idlerpg status | claim            how long left; collect what you found
+/idlerpg backpack | equip | sell | sellall
+/idlerpg open rarity:rare          open a crate
+/idlerpg duel player:@someone stake:250
+/idlerpg profile [player] | top
+```
+
+The dice are rolled on **claim**, not on dispatch. If the outcome were decided
+up front the intervening hours would be theatre.
+
+### It is a game, and that is measured
+
+`test/rpg/balance.test.ts` asserts on what a player feels rather than on
+formulas, because a formula can be correct and the game still be dead. An
+optimising player, playing continuously:
+
+| Play time | Level | Power |
+|---|---|---|
+| 1 hour | 2.7 | 14 |
+| 24 hours | 8.5 | 40 |
+| 1 week | 20.8 | 116 |
+| 30 days | 54.8 | 479 |
+
+And the decision pays, which is the whole point:
+
+| Policy | Level at 72h | Win rate |
+|---|---|---|
+| grind the safest | 10.0 | 88% |
+| choose well | 12.8 | 49% |
+| always max out | 12.0 | 43% |
+
+The best difficulty is an **interior** optimum that moves as your gear
+improves — at level 1 you should reach to 3, at level 20 you should take 15 and
+not the 22 you have unlocked. Class spread is 1.5 levels against the IRC
+game's 0.4, and no class is within 1.6x of dominating.
+
+That balance did not arrive by luck. The first version had rewards scaling
+linearly with difficulty, which left reward-per-hour flat, which made the
+safest adventure optimal forever — the identical failure the IRC game has,
+reached by a different route. The suite caught it: the "choose well" policy was
+picking difficulty 1. `REWARD_EXPONENT` in `src/rpg/rules.ts` is the fix and
+carries the story.
+
+### What this is not
+
+A rewrite of [the archived Discord IdleRPG](https://github.com/Gelbpunkt/IdleRPG),
+which is AGPL-3.0 Python with a dead upstream and a dead support API. This is
+an independent implementation of the *genre's* loop — its own formulas, classes,
+vocabulary and prose — informed by that design rather than derived from its code.
+
+Built here: adventures, classes and their tiers, equipment, rarities and
+crates, the coin economy, and wagered duels. **Not** built: guilds, alliances,
+raids, trading, tournaments, gods, marriage, pets, gambling. Those are the
+social layer, and they are the obvious next thing.
 
 ## Adding commands
 
@@ -701,6 +795,13 @@ src/
     map.ts        the 500x500 map, rendered to PNG through sharp
     store.ts      the realm on disk
     watch.ts      the clock, and the only place the game meets Discord
+  rpg/            the Discord game: dispatch, wait, claim
+    types.ts      characters, items, expeditions
+    content.ts    classes, rarities, vocabulary; prose only, no mechanics
+    rules.ts      every number, pure -- see REWARD_EXPONENT
+    engine.ts     the verbs; no config, no discord.js
+    format.ts     character sheets and the adventure table
+    store.ts      the world on disk
 infra/
   install.sh      install/update on an existing Linux box
   eousbot.service systemd user unit

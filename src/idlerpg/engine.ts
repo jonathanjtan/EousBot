@@ -181,7 +181,7 @@ export function register(
   ctx: EngineContext,
 ): JoinResult {
   if (state.players[userId]) {
-    return { ok: false, reason: "You already have a character. `/idlerpg whoami` will show it." };
+    return { ok: false, reason: "You already have a character. `/irc-idlerpg whoami` will show it." };
   }
   if (byName(state, name)) {
     return { ok: false, reason: `Somebody is already called ${name}. Pick another name.` };
@@ -276,7 +276,7 @@ export function penalizeMessage(
       userId,
       `Penalty of ${duration(cost)} added to your clock for speaking — that is what ` +
         `talking costs at level ${player.level}. Next level in ${duration(player.next)}.\n` +
-        `_You will not be told again for a while; \`/idlerpg whoami\` keeps the running total._`,
+        `_You will not be told again for a while; \`/irc-idlerpg whoami\` keeps the running total._`,
       "message-penalty",
     ),
   );
@@ -797,7 +797,7 @@ function beginQuest(state: GameState, ctx: EngineContext): Announcement[] {
   return [
     say(
       `${roster} have been chosen by the gods to ${text}. They must reach ` +
-        `[${p1.x}, ${p1.y}], then [${p2.x}, ${p2.y}]. \`/idlerpg map\` shows where they are.`,
+        `[${p1.x}, ${p1.y}], then [${p2.x}, ${p2.y}]. \`/irc-idlerpg map\` shows where they are.`,
     ),
   ];
 }

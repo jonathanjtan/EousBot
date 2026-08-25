@@ -3,7 +3,7 @@
  *
  * The companion to src/idlerpg/, and a deliberate opposite. That game is
  * jotun's 2004 IRC design, where the only input is your continued silence; it
- * is preserved faithfully under `/irc-idlerpg`. This one exists because that
+ * is preserved faithfully under `/old-idlerpg`. This one exists because that
  * design does not survive contact with Discord: measured over sixty simulated
  * days, twelve always-online players land within three levels of each other
  * and the game's single decision -- alignment -- is worth 0.4 levels. Presence
@@ -65,6 +65,14 @@ export interface Expedition {
   difficulty: number;
   startedAt: number;
   endsAt: number;
+  /**
+   * Whether the player has been told it finished.
+   *
+   * The whole loop is "leave, come back", and until this existed nothing ever
+   * said when to come back -- you either remembered or you polled. One flag,
+   * because a reminder that fires twice is worse than one that never fires.
+   */
+  notified?: boolean;
 }
 
 export interface Character {

@@ -68,6 +68,34 @@ export function decodeDrawOffer(
   return { offererId: parts[2] as string, targetId: parts[3] as string };
 }
 
+const HELP = [
+  "**Chess.** Real chess — every rule, including castling, en passant, promotion,",
+  "stalemate, the fifty-move rule and insufficient material.",
+  "",
+  "```",
+  "/chess challenge player:@someone stake:1000",
+  "/chess move move:e2e4",
+  "/chess board",
+  "/chess draw",
+  "/chess resign",
+  "```",
+  "**Moves are coordinates**, not algebraic: name the square you are moving from",
+  "and the square you are moving to. `e2e4`, `g1f3`, `e1g1` to castle.",
+  "",
+  "Coordinate notation rather than `Nf3` on purpose — algebraic needs",
+  "disambiguation rules that are a second source of bugs, and nobody typing into",
+  "a Discord box benefits from writing `Nbd7` instead of `b8d7`.",
+  "",
+  "**Promotion must say what it becomes:** `e7e8q` for a queen, or `n`, `r`, `b`.",
+  "A bare `e7e8` is refused rather than silently queening, in case you wanted the",
+  "knight.",
+  "",
+  "The challenger plays white. One game each at a time. A stake only moves when",
+  "the game ends, and only if the challenged player pressed Accept.",
+  "",
+  "`/chess board` shows the position from your own side.",
+].join("\n");
+
 export const command: Command = {
   data: new SlashCommandBuilder()
     .setName("chess")
@@ -91,7 +119,8 @@ export const command: Command = {
     )
     .addSubcommand((s) => s.setName("board").setDescription("Show the current position"))
     .addSubcommand((s) => s.setName("draw").setDescription("Offer a draw"))
-    .addSubcommand((s) => s.setName("resign").setDescription("Resign the game")),
+    .addSubcommand((s) => s.setName("resign").setDescription("Resign the game"))
+    .addSubcommand((s) => s.setName("help").setDescription("How to play, and how to write a move")),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -106,6 +135,9 @@ export const command: Command = {
         return doDrawOffer(interaction);
       case "resign":
         return doResign(interaction);
+      case "help":
+        await interaction.reply({ content: HELP, flags: MessageFlags.Ephemeral });
+        return;
     }
   },
 };

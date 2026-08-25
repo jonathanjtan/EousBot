@@ -59,6 +59,7 @@ import {
   startIdleRpg,
   syncAllPresence,
 } from "./idlerpg/watch.js";
+import { startClaimReminders } from "./rpg/notifywatch.js";
 import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
 import { syncGuildCommands } from "./register.js";
@@ -154,6 +155,9 @@ client.once(Events.ClientReady, async (ready) => {
   startFeedWatch(client);
   // Starts the Idle RPG clock. No-op unless IDLERPG_ENABLED is set.
   startIdleRpg(client);
+  // Tells dispatch-RPG players when their adventure is done. The only timer
+  // that game owns, and the reason is that nobody is looking by definition.
+  startClaimReminders(client);
   if (config.idlerpg.enabled) {
     await checkChannel().catch((err) =>
       log.warn("Idle RPG channel check failed", { err: String(err) }),

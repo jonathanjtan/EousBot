@@ -35,7 +35,7 @@ export function profile(character: Character, t: Tuning = DEFAULT_TUNING): Embed
     .join(", ");
 
   const embed = new EmbedBuilder()
-    .setTitle(`${character.name} — ${className(character)}`)
+    .setTitle(`${character.name}, ${className(character)}`)
     .setColor(0x2f81f7)
     .addFields(
       { name: "Level", value: `${character.level}`, inline: true },
@@ -72,7 +72,7 @@ function progressBar(have: number, need: number, width = 20): string {
 
 export function describe(item: Item): string {
   const mark = item.rarity === "common" ? "" : ` *(${item.rarity})*`;
-  return `**${item.name}** — ${item.value} ${item.kind === "weapon" ? "damage" : "protection"}${mark}`;
+  return `**${item.name}**, ${item.value} ${item.kind === "weapon" ? "damage" : "protection"}${mark}`;
 }
 
 /**
@@ -86,8 +86,8 @@ export function describe(item: Item): string {
 export function adventureTable(character: Character, t: Tuning = DEFAULT_TUNING): string {
   const ceiling = maxDifficultyFor(character, t);
   const rows: string[] = [
-    "`  # │ time  │ odds │ coin    │ xp     │ expected`",
-    "`────┼───────┼──────┼─────────┼────────┼─────────`",
+    "`  # │  time   │ odds │ coin    │ xp     │ expected`",
+    "`────┼─────────┼──────┼─────────┼────────┼─────────`",
   ];
 
   for (let d = 1; d <= ceiling; d += 1) {
@@ -99,7 +99,7 @@ export function adventureTable(character: Character, t: Tuning = DEFAULT_TUNING)
     rows.push(
       "`" +
         `${String(d).padStart(3)} │ ` +
-        `${shortDuration(expeditionDuration(d, t)).padStart(5)} │ ` +
+        `${shortDuration(expeditionDuration(d, t)).padStart(7)} │ ` +
         `${`${Math.round(odds * 100)}%`.padStart(4)} │ ` +
         `${String(money).padStart(7)} │ ` +
         `${String(xp).padStart(6)} │ ` +
@@ -109,16 +109,16 @@ export function adventureTable(character: Character, t: Tuning = DEFAULT_TUNING)
   }
 
   return [
-    `**Where to, ${character.name}?**`,
+    `Where to, ${character.name}?`,
     ...rows,
     "",
-    `\`/idlerpg adventure difficulty:<n>\` — you unlock harder ones by levelling.`,
+    `\`/idlerpg adventure difficulty:<n>\`. Harder ones unlock as you level.`,
   ].join("\n");
 }
 
 export function claimMessage(character: Character, reward: ClaimReward): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setTitle(reward.won ? `Difficulty ${reward.difficulty} — success` : `Difficulty ${reward.difficulty} — failed`)
+    .setTitle(reward.won ? `Difficulty ${reward.difficulty}, success` : `Difficulty ${reward.difficulty}, failed`)
     .setDescription(`Your party ${reward.line}.`)
     .setColor(reward.won ? 0x4caf50 : 0xcf4a4a);
 
@@ -150,10 +150,10 @@ export function backpack(character: Character, t: Tuning = DEFAULT_TUNING): stri
   const rows = character.backpack
     .slice()
     .sort((a, b) => b.value - a.value)
-    .map((i) => `\`#${String(i.id).padEnd(4)}\` ${describe(i)} — sells for ${coin(sellValue(i))}`);
+    .map((i) => `\`#${String(i.id).padEnd(4)}\` ${describe(i)}, sells for ${coin(sellValue(i))}`);
 
   return [
-    `**${character.name}**'s backpack (${character.backpack.length}/${t.backpackSize})`,
+    `${character.name}'s backpack (${character.backpack.length}/${t.backpackSize})`,
     ...rows.slice(0, 25),
     ...(rows.length > 25 ? [`_…and ${rows.length - 25} more._`] : []),
   ].join("\n");
@@ -168,10 +168,10 @@ export function ranking(characters: Character[]): string {
     return "Nobody has a character yet. `/idlerpg start` makes one.";
   }
   return [
-    "**The realm**",
+    "The realm:",
     ...characters.map(
       (c, i) =>
-        `\`${String(i + 1).padStart(2)}\` **${c.name}** — level ${c.level} ${className(c)}, ` +
+        `\`${String(i + 1).padStart(2)}\` **${c.name}**, level ${c.level} ${className(c)}, ` +
         `${coin(c.money)}, power ${attack(c) + defense(c)}`,
     ),
   ].join("\n");
@@ -179,9 +179,9 @@ export function ranking(characters: Character[]): string {
 
 export function classMenu(): string {
   return [
-    "**Pick a class.** Each does exactly one thing, and it gets stronger as you level.",
+    "Pick a class. Each does one thing, and it gets stronger as you level.",
     "",
-    ...Object.values(CLASSES).map((c) => `**${c.id}** — ${c.summary}`),
+    ...Object.values(CLASSES).map((c) => `**${c.id}**, ${c.summary}`),
   ].join("\n");
 }
 
@@ -193,18 +193,18 @@ import type { Guild, Listing, Raid, Tournament } from "./types.js";
 
 export function raceMenu(): string {
   return [
-    "**Pick a race.** Smaller than your class choice, and permanent.",
+    "Pick a race. Smaller than your class choice, and permanent.",
     "",
-    ...RACE_IDS.map((id) => `**${id}** — ${RACES[id].summary}`),
+    ...RACE_IDS.map((id) => `**${id}**, ${RACES[id].summary}`),
   ].join("\n");
 }
 
 export function godMenu(): string {
   return [
-    "**The gods.** Following one lets you sacrifice items you cannot wear,",
+    "Following a god lets you sacrifice items you cannot wear,",
     "and favour buys better odds on every adventure.",
     "",
-    ...Object.values(GODS).map((g) => `**${g.id}** — ${g.title}. ${g.summary}`),
+    ...Object.values(GODS).map((g) => `**${g.id}**, ${g.title}. ${g.summary}`),
   ].join("\n");
 }
 
@@ -223,10 +223,10 @@ export function godStanding(character: Character): string {
 
 export function storeList(): string {
   return [
-    "**The shop.** Crates only, and priced well above what falls out of them —",
-    "this is where surplus coin goes to become a chance at gear.",
+    "The shop sells crates only. They cost more than their contents sell for,",
+    "so buy them for gear you can wear, not to resell.",
     "",
-    ...RARITIES.map((r) => `**${r}** — ${coin(CRATE_PRICE[r])}`),
+    ...RARITIES.map((r) => `**${r}**, ${coin(CRATE_PRICE[r])}`),
     "",
     "`/idlerpg store buy rarity:<r> count:<n>`",
   ].join("\n");
@@ -235,7 +235,7 @@ export function storeList(): string {
 export function guildCard(guild: Guild, roster: Character[], allies: Guild[]): EmbedBuilder {
   const byPower = [...roster].sort((a, b) => power(b) - power(a));
   const embed = new EmbedBuilder()
-    .setTitle(`${guild.name} — level ${guild.level}`)
+    .setTitle(`${guild.name}, level ${guild.level}`)
     .setColor(0xa970ff)
     .addFields(
       { name: "Bank", value: coin(guild.bank), inline: true },
@@ -259,7 +259,7 @@ export function guildCard(guild: Guild, roster: Character[], allies: Guild[]): E
         .map((c) => {
           const rank =
             c.userId === guild.leaderId ? "👑" : guild.officerIds.includes(c.userId) ? "🔹" : "▫️";
-          return `${rank} **${c.name}** — level ${c.level}, power ${power(c)}`;
+          return `${rank} **${c.name}**, level ${c.level}, power ${power(c)}`;
         })
         .join("\n"),
     });
@@ -276,11 +276,11 @@ export function guildCard(guild: Guild, roster: Character[], allies: Guild[]): E
 export function guildList(guilds: Guild[]): string {
   if (guilds.length === 0) return "No guilds yet. `/idlerpg guild create` founds one.";
   return [
-    "**Guilds**",
+    "Guilds:",
     ...guilds
       .sort((a, b) => b.memberIds.length - a.memberIds.length)
       .slice(0, 20)
-      .map((g) => `**${g.name}** — level ${g.level}, ${g.memberIds.length} members, ${coin(g.bank)}`),
+      .map((g) => `**${g.name}**, level ${g.level}, ${g.memberIds.length} members, ${coin(g.bank)}`),
   ].join("\n");
 }
 
@@ -289,9 +289,9 @@ export function marketBoard(listings: Listing[], nameOf: (id: string) => string)
     return "The market is empty. `/idlerpg market sell` lists something.";
   }
   return [
-    "**The market** — cheapest first.",
+    "The market, cheapest first.",
     ...listings.map(
-      (l) => `\`#${String(l.id).padEnd(4)}\` ${describe(l.item)} — **${coin(l.price)}** from ${nameOf(l.sellerId)}`,
+      (l) => `\`#${String(l.id).padEnd(4)}\` ${describe(l.item)}, **${coin(l.price)}** from ${nameOf(l.sellerId)}`,
     ),
     "",
     "`/idlerpg market buy listing:<n>`",
@@ -304,7 +304,7 @@ export function raidCard(raid: Raid, nameOf: (id: string) => string): EmbedBuild
   const top = Object.entries(raid.damage)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
-    .map(([id, dealt], i) => `\`${String(i + 1).padStart(2)}\` ${nameOf(id)} — ${dealt.toLocaleString("en-US")}`);
+    .map(([id, dealt], i) => `\`${String(i + 1).padStart(2)}\` ${nameOf(id)}, ${dealt.toLocaleString("en-US")}`);
 
   return new EmbedBuilder()
     .setTitle(raid.bossName)
@@ -329,7 +329,7 @@ export function tournamentCard(t: Tournament, nameOf: (id: string) => string): s
     ].join("\n");
   }
   return [
-    `**Tournament** — buy-in ${coin(t.buyIn)}, pot ${coin(t.buyIn * t.entries.length)}.`,
+    `Tournament. Buy-in ${coin(t.buyIn)}, pot ${coin(t.buyIn * t.entries.length)}.`,
     `Entries close <t:${Math.floor(t.closesAt / 1000)}:R>.`,
     "",
     `**${t.entries.length} entered:** ${t.entries.map((e) => nameOf(e.userId)).join(", ")}`,
@@ -415,9 +415,9 @@ export function rankBoard(
     return "Nobody has a character yet. `/idlerpg start` makes one.";
   }
   return [
-    `**${RANK_LABEL[metric]}**`,
+    `${RANK_LABEL[metric]}:`,
     ...ranked.map(
-      (c, i) => `\`${String(i + 1).padStart(2)}\` **${c.name}** — ${rankDisplay(c, metric)}`,
+      (c, i) => `\`${String(i + 1).padStart(2)}\` **${c.name}**, ${rankDisplay(c, metric)}`,
     ),
   ].join("\n");
 }

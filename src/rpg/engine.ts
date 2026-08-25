@@ -187,7 +187,7 @@ export function startExpedition(
       ok: false,
       reason:
         left > 0
-          ? `You are already out. ${shortDuration(left)} left — check back with \`/idlerpg status\`.`
+          ? `You are already out. ${shortDuration(left)} left. Check \`/idlerpg status\`.`
           : "You are already out, and finished. Claim it with `/idlerpg claim`.",
     };
   }

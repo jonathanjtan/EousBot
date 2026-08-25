@@ -88,7 +88,7 @@ ${grid.join("\n")}
 <rect x="${MARGIN}" y="${MARGIN}" width="${PLOT}" height="${PLOT}" fill="none" stroke="${GRID}" stroke-width="2"/>
 ${waypoints.join("\n")}
 ${dots.join("\n")}
-<text x="${MARGIN}" y="${CANVAS - 8}" fill="${GRID}" font-family="monospace" font-size="12">${tuning.mapX}x${tuning.mapY} — ${escapeXml(caption)}</text>
+<text x="${MARGIN}" y="${CANVAS - 8}" fill="${GRID}" font-family="monospace" font-size="12">${tuning.mapX}x${tuning.mapY}, ${escapeXml(caption)}</text>
 </svg>`;
 
   return sharp(Buffer.from(svg)).png().toBuffer();

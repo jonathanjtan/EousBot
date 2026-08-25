@@ -274,7 +274,7 @@ export function penalizeMessage(
   out.push(
     tell(
       userId,
-      `Penalty of ${duration(cost)} added to your clock for speaking — that is what ` +
+      `Penalty of ${duration(cost)} added to your clock for speaking. That is what ` +
         `talking costs at level ${player.level}. Next level in ${duration(player.next)}.\n` +
         `_You will not be told again for a while; \`/old-idlerpg whoami\` keeps the running total._`,
       "message-penalty",
@@ -1060,7 +1060,7 @@ export function tick(state: GameState, seconds: number, ctx: EngineContext): Ann
             "**Idle RPG top players**",
             ...top.map(
               (p, i) =>
-                `${i + 1}. **${p.name}**, level ${p.level} ${p.charClass} — ` +
+                `${i + 1}. **${p.name}**, level ${p.level} ${p.charClass}, ` +
                 `next level in ${duration(p.next)}`,
             ),
           ].join("\n"),

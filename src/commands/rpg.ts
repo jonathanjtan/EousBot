@@ -417,7 +417,7 @@ export const command: Command = {
           o
             .setName("topic")
             .setDescription("Which part (the overview if omitted)")
-            .addChoices(...HELP_PAGES.map((p) => ({ name: `${p.topic} — ${p.summary}`.slice(0, 100), value: p.topic }))),
+            .addChoices(...HELP_PAGES.map((p) => ({ name: `${p.topic}, ${p.summary}`.slice(0, 100), value: p.topic }))),
         ),
     )
     .addSubcommand((s) => s.setName("trivia").setDescription("A question, for coin"))
@@ -498,9 +498,9 @@ export const command: Command = {
             .setDescription("Start a realm-wide event")
             .addStringOption((o) =>
               o.setName("kind").setDescription("Which one (random if omitted)").addChoices(
-                { name: "bounty — double coin", value: "bounty" },
-                { name: "study — double experience", value: "study" },
-                { name: "fortune — more crates", value: "fortune" },
+                { name: "bounty, double coin", value: "bounty" },
+                { name: "study, double experience", value: "study" },
+                { name: "fortune, more crates", value: "fortune" },
               ),
             ),
         ),
@@ -655,7 +655,7 @@ async function handleMarryGroup(interaction: ChatInputCommandInteraction, sub: s
   }
 
   await interaction.reply({
-    content: `<@${target.id}> — **${interaction.user.username}** is proposing.`,
+    content: `<@${target.id}>, **${interaction.user.username}** is proposing.`,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
@@ -743,7 +743,7 @@ async function doAdventure(interaction: Interaction): Promise<void> {
   await interaction.reply(
     [
       `**${result.character.name}** has gone to ${result.name}.`,
-      `Difficulty ${result.difficulty} — back in ${shortDuration(result.endsAt - Date.now())}, ` +
+      `Difficulty ${result.difficulty}, back in ${shortDuration(result.endsAt - Date.now())}, ` +
         `<t:${Math.floor(result.endsAt / 1000)}:R>.`,
       "",
       "_`/idlerpg claim` when the time is up. The dice are rolled then, not now._",
@@ -783,7 +783,7 @@ async function doClaim(interaction: Interaction): Promise<void> {
   }
   if (result.kind === "pending") {
     await interaction.reply({
-      content: `Not back yet — <t:${Math.floor(result.endsAt / 1000)}:R>.`,
+      content: `Not back yet. Due <t:${Math.floor(result.endsAt / 1000)}:R>.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -850,7 +850,7 @@ async function doOpen(interaction: Interaction): Promise<void> {
   if (result.equipped) {
     lines.push(
       result.replaced
-        ? `Better than your ${result.replaced.name} (${result.replaced.value}) — equipped.`
+        ? `Better than your ${result.replaced.name} (${result.replaced.value}), so it is equipped.`
         : "Equipped, since you had nothing in that slot.",
     );
   } else if (result.soldOverflow > 0) {
@@ -900,13 +900,13 @@ async function doDuel(interaction: Interaction): Promise<void> {
 
   await interaction.reply({
     content:
-      `<@${target.id}> — **${challenger.name}** challenges you for ${coin(stake)}.\n` +
+      `<@${target.id}>, **${challenger.name}** challenges you for ${coin(stake)}.\n` +
       `_Accept and the loser pays. Ignore it and nothing happens._`,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(encodeDuel(interaction.user.id, target.id, stake))
-          .setLabel(`Accept — ${stake}`)
+          .setLabel(`Accept, ${stake}`)
           .setEmoji("⚔️")
           .setStyle(ButtonStyle.Danger),
       ),

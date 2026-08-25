@@ -569,9 +569,9 @@ export { findByName };
  * Operator controls.
  *
  * Gated on the bot's admin allowlist by the caller, not here -- this module
- * decides what happens, config.ts decides who may ask. Everything is
- * deliberately blunt and deliberately logged into the channel: an admin who
- * quietly hands themselves a legendary has broken the game for everyone else,
+ * decides what happens, config.ts decides who may ask. Everything is blunt and
+ * everything is logged into the channel. An admin who hands themselves a
+ * legendary in private has broken the game for everyone else,
  * and the cheapest defence is that everyone can see it happen.
  */
 export async function handleAdmin(interaction: I, sub: string): Promise<void> {
@@ -786,8 +786,8 @@ export async function handleTrivia(interaction: I): Promise<void> {
 /**
  * Scores an answer.
  *
- * The buttons are stripped on the first response, so the prize genuinely goes
- * to whoever was fastest rather than to everyone who eventually clicked.
+ * The buttons are stripped on the first response, so the prize goes to whoever
+ * was fastest rather than to everyone who eventually clicked.
  */
 export async function handleTriviaButton(
   interaction: ButtonInteraction,

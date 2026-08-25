@@ -224,8 +224,8 @@ export function logout(state: GameState, userId: string, ctx: EngineContext): An
   player.penalties.logout += cost;
   moveClock(player, cost);
   player.online = false;
-  // Sticky, so the next presence event does not quietly undo a logout the
-  // player has already been charged for.
+  // Sticky, so the next presence event cannot undo a logout the player has
+  // already been charged for.
   player.suspended = true;
 
   out.push(
@@ -242,8 +242,8 @@ export function logout(state: GameState, userId: string, ctx: EngineContext): An
  *
  * Billed by the message's length when the bot can see it, exactly as upstream
  * bills an IRC line, and at a flat rate when it cannot. Both paths scale by
- * level, and that scaling is savage on purpose: at level 40 a single sentence
- * costs hours. It is meant to be a decision.
+ * level, and that scaling is savage. At level 40 a single sentence costs hours,
+ * which is what makes speaking a decision.
  *
  * Talking also abandons a quest, which is upstream's rule and not an oversight
  * -- the original runs the same check for a message as for a disconnect. It is
@@ -352,8 +352,8 @@ export function penalizeNick(
 /**
  * Follows a player's Discord presence, when presence is what drives idling.
  *
- * Deliberately free of penalties, tenure resets and quest desertions, all of
- * which `login` and `logout` still do. On IRC your client stayed connected
+ * Free of penalties, tenure resets and quest desertions, all of which `login`
+ * and `logout` still do. On IRC your client stayed connected
  * while you slept, so quitting the channel was a choice worth charging for. On
  * Discord going offline is what a phone does every night, and a game that
  * billed people for sleeping would be unplayable within a week.
@@ -726,8 +726,8 @@ function evilness(state: GameState, ctx: EngineContext): Announcement[] {
  * Ends the current quest if `player` is on it, charging everyone for it.
  *
  * The deserter pays a level-scaled penalty and every other player in the realm
- * pays a flat fifteen minutes. Making the innocent pay is the point: it is what
- * turns a quest into four people quietly willing each other to stay put.
+ * pays a flat fifteen minutes. Making the innocent pay is the point. It turns a
+ * quest into four people willing each other to stay put.
  */
 function desertQuest(state: GameState, player: Player, ctx: EngineContext): Announcement[] {
   const quest = state.quest;
@@ -834,7 +834,7 @@ function wrap(value: number, max: number): number {
  * One second of map movement for everybody, and any fight that results.
  *
  * Idle players stagger one square in each axis at random and fight whoever they
- * land on. Questers on a map quest walk deliberately toward their waypoint, and
+ * land on. Questers on a map quest walk straight toward their waypoint, and
  * cannot be made to fight -- their quest is hard enough.
  *
  * The collision check is odds-scaled by population (`oneIn(online)`), so a
@@ -997,7 +997,7 @@ export function topPlayers(state: GameState, limit = 3): Player[] {
  * outage does not hand every player a free day.
  */
 export function tick(state: GameState, seconds: number, ctx: EngineContext): Announcement[] {
-  // Advanced before the pause check, deliberately. If a paused realm left
+  // Advanced before the pause check. If a paused realm left
   // lastTick behind, the delta would keep growing and the whole of it (up to
   // the caller's cap) would be credited the instant somebody unpaused --
   // handing everyone ten free minutes for the privilege of being frozen.

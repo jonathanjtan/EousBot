@@ -104,7 +104,7 @@ export const TIMED_QUESTS: readonly string[] = [
   "sing the harvest through, badly, because the good singers have all left",
   "find out what the well is answering, and whether anyone has been asking",
   "guard a door that opens only inward, from the side that has no handle",
-  "walk the perimeter of a forest that has been quietly getting larger",
+  "walk the perimeter of a forest that has been getting larger when unobserved",
   "deliver an apology four generations late to whoever is left to receive it",
 ];
 

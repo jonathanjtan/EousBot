@@ -453,29 +453,29 @@ install doesn't relay 25 old posts as if they were live drops. Both the
 subscriptions and the seen-entry ids live in `state/eousbot.json`, so a
 self-deploy landing mid-drop doesn't replay the channel.
 
-## Idle RPG — the IRC original (`/irc-idlerpg`)
+## Idle RPG — the IRC original (`/old-idlerpg`)
 
 A port of [jotun's Idle RPG](https://idlerpg.net/) — the IRC game from 2004
 where you level up by doing nothing. Off unless `IDLERPG_ENABLED=true`.
 
-It lives at `/irc-idlerpg` because it is a museum piece, faithfully kept. The
+It lives at `/old-idlerpg` because it is a museum piece, faithfully kept. The
 game people actually play is `/idlerpg`, below, and the measurement that
 produced the split is in that section.
 
 ```
-/irc-idlerpg register class:necromancer   make a character; your clock starts now
-/irc-idlerpg login | logout               logging out costs you time
-/irc-idlerpg align alignment:evil         good fights better, evil fights dirtier
-/irc-idlerpg whoami | status player:<name>
-/irc-idlerpg items [player:<name>]
-/irc-idlerpg top [count:10]
-/irc-idlerpg quest                        who is questing, and how far they have got
-/irc-idlerpg map                          a PNG of where everyone is standing
-/irc-idlerpg help
-/irc-idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
+/old-idlerpg register class:necromancer   make a character; your clock starts now
+/old-idlerpg login | logout               logging out costs you time
+/old-idlerpg align alignment:evil         good fights better, evil fights dirtier
+/old-idlerpg whoami | status player:<name>
+/old-idlerpg items [player:<name>]
+/old-idlerpg top [count:10]
+/old-idlerpg quest                        who is questing, and how far they have got
+/old-idlerpg map                          a PNG of where everyone is standing
+/old-idlerpg help
+/old-idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
 ```
 
-`/irc-idlerpg admin panel` posts a pinnable message with an **Enter the realm**
+`/old-idlerpg admin panel` posts a pinnable message with an **Enter the realm**
 button. That is the intended way in: one click and a two-field form, rather
 than asking everyone to discover a slash command with a required argument.
 
@@ -521,7 +521,7 @@ runs better with them, so each is opt-in through `DISCORD_PRIVILEGED_INTENTS`.
 | Intent | What it buys | Without it |
 |---|---|---|
 | `messagecontent` | Talking billed by message length, as upstream bills an IRC line | A flat rate per message |
-| `presence` | Idling follows your Discord status; nobody types `/login` | `/idlerpg login` and `/idlerpg logout` |
+| `presence` | Idling follows your Discord status; nobody types `/login` | `/old-idlerpg login` and `/old-idlerpg logout` |
 | `members` | The `part` and `nick` penalties | Those two never fire |
 
 **Enable them in the Developer Portal first.** Requesting an intent the portal
@@ -546,9 +546,9 @@ is what a phone does every night; billing it would mean the game punishes
 sleep. Presence also does not reset quest tenure, or a nightly disconnect would
 keep everyone permanently ineligible to quest.
 
-`/idlerpg logout` keeps its penalty, because that one *is* a choice. It also
+`/old-idlerpg logout` keeps its penalty, because that one *is* a choice. It also
 sticks: presence will not quietly undo a logout you have already paid for,
-until you `/idlerpg login` again.
+until you `/old-idlerpg login` again.
 
 ### What talking costs, and where
 
@@ -587,13 +587,13 @@ IDLERPG_PENALTY_SCOPE=channel
 ```
 
 Then enable the three intents in the Developer Portal, restart, and run
-`/idlerpg admin panel` in the game channel and pin it. Everyone clicks once and
+`/old-idlerpg admin panel` in the game channel and pin it. Everyone clicks once and
 is playing forever; nobody types `/login`, and nobody is penalised for talking
 in the rest of the server.
 
 To run it without granting any privileged intent, drop the first line and leave
 `IDLERPG_ONLINE_SOURCE=manual`. The game is fully playable that way — people
-just use `/idlerpg login` and `/idlerpg logout`, and talking is billed flat.
+just use `/old-idlerpg login` and `/old-idlerpg logout`, and talking is billed flat.
 
 ### A small realm runs hot
 
@@ -627,7 +627,7 @@ A tick credits real elapsed time rather than the timer interval, capped at
 `IDLERPG_MAX_CATCHUP_S`. That is what stops a self-deploy restart from costing
 everyone the minute it took, without letting a day-long outage hand them a day.
 
-`/irc-idlerpg admin pause` freezes clocks, events and quests without stopping the
+`/old-idlerpg admin pause` freezes clocks, events and quests without stopping the
 bot — useful before a risky deploy.
 
 ## Idle RPG — the Discord one (`/idlerpg`)
@@ -686,12 +686,24 @@ up front the intervening hours would be theatre.
 /idlerpg marry     propose · court · divorce · status
 /idlerpg bet       flip · dice
 /idlerpg admin     grant · setlevel · spawn · reset · clear · event · season
-/idlerpg           profile · classes · races · duel · top · trivia · maths
+/idlerpg           profile · classes · races · duel · top · trivia · maths · help
 
-/chess             challenge · move · board · draw · resign
+/chess             challenge · move · board · draw · resign · help
 /werewolf          open · join · leave · start · night · dawn · vote · dusk
-                   status · end
+                   status · end · help
 ```
+
+**`/idlerpg help`** has nine topics — the loop, adventuring, character, gear,
+gods, guilds, contests, money and admin. It exists because a one-line Discord
+tooltip on each of sixty-eight subcommands does not tell anybody that reaching
+two difficulties above your level is correct, or that unwearable items are
+worth more on an altar than at the shop. A test resolves every command the help
+and the README mention against the real command tree, so neither can rot into
+being confidently wrong.
+
+**You get a DM when your adventure finishes.** That is the only timer this game
+owns — everything else is evaluated when somebody runs a command. Reminders are
+the exception because by definition nobody is looking.
 
 Some notes on why things are the way they are:
 

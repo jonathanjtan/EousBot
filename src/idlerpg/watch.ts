@@ -219,7 +219,7 @@ async function announce(text: string): Promise<void> {
 
 /**
  * Applies a command's announcements immediately rather than waiting for the
- * next tick, so a `/irc-idlerpg login` is echoed while the user is still looking.
+ * next tick, so a `/old-idlerpg login` is echoed while the user is still looking.
  */
 export async function publish(announcements: Announcement[]): Promise<void> {
   // Only when something actually happened. Every message in the guild reaches
@@ -245,7 +245,7 @@ export function presenceDriven(): boolean {
   if (!client?.options.intents.has(GatewayIntentBits.GuildPresences)) {
     log.error(
       "IDLERPG_ONLINE_SOURCE=presence needs the GuildPresences intent; " +
-        "falling back to manual /irc-idlerpg login. Add `presence` to " +
+        "falling back to manual /old-idlerpg login. Add `presence` to " +
         "DISCORD_PRIVILEGED_INTENTS and enable it in the Developer Portal.",
     );
     return false;

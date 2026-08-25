@@ -42,6 +42,38 @@ const ROLE_BRIEF: Record<WerewolfRole, string> = {
   villager: "**You are a villager.** You have no power and no information. You have a vote, and an opinion.",
 };
 
+const HELP = [
+  "**Werewolf.** The village is trying to find the wolves before the wolves finish",
+  "the village.",
+  "",
+  "```",
+  "/werewolf open · join · leave",
+  "/werewolf start              deals roles by DM (host)",
+  "/werewolf night player:@x    your night action, privately",
+  "/werewolf dawn               resolve the night (host)",
+  "/werewolf vote player:@x     accuse somebody",
+  "/werewolf dusk               resolve the vote (host)",
+  "/werewolf status · end",
+  "```",
+  "**Roles.** Roughly a quarter are wolves. There is always a seer, and a guard",
+  "once there are six of you. Everyone else is a villager with a vote and an",
+  "opinion.",
+  "",
+  "`wolf` — agree with the pack each night on somebody to take. Majority decides;",
+  "a split pack kills nobody.",
+  "`seer` — look at one person each night and learn what they are. You find out",
+  "immediately, and privately.",
+  "`guard` — protect one person from the wolves each night. Not yourself.",
+  "",
+  "**Phases advance when the host calls them**, not on a timer — a timed night",
+  "ends at 3am for whoever was asleep.",
+  "",
+  "**The wolves win at parity**, not majority: once they equal the village they",
+  "can never be out-voted, so playing on would be theatre.",
+  "",
+  "Five players minimum. Roles arrive by DM, so open yours to the bot first.",
+].join("\n");
+
 export const command: Command = {
   data: new SlashCommandBuilder()
     .setName("werewolf")
@@ -65,7 +97,8 @@ export const command: Command = {
     )
     .addSubcommand((s) => s.setName("dusk").setDescription("Resolve the vote (host)"))
     .addSubcommand((s) => s.setName("status").setDescription("Who is alive, and whose turn it is"))
-    .addSubcommand((s) => s.setName("end").setDescription("Abandon the game (host)")),
+    .addSubcommand((s) => s.setName("end").setDescription("Abandon the game (host)"))
+    .addSubcommand((s) => s.setName("help").setDescription("The roles, the phases, and who calls them")),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -89,6 +122,9 @@ export const command: Command = {
         return doStatus(interaction);
       case "end":
         return doEnd(interaction);
+      case "help":
+        await interaction.reply({ content: HELP, flags: MessageFlags.Ephemeral });
+        return;
     }
   },
 };

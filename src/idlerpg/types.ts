@@ -100,7 +100,7 @@ export interface Player {
   /** Whether the clock is currently running. */
   online: boolean;
   /**
-   * Whether the player has deliberately stepped out with `/irc-idlerpg logout`.
+   * Whether the player has deliberately stepped out with `/old-idlerpg logout`.
    *
    * Separate from `online` because the two answer different questions once
    * presence drives idling: `online` is "is Discord showing them connected",

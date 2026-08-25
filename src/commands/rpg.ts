@@ -8,6 +8,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { CLASS_IDS, GOD_IDS, RACE_IDS } from "../rpg/content.js";
+import { HELP_PAGES, helpPage } from "../rpg/help.js";
 import { isAdmin } from "../config.js";
 import {
   claimExpedition,
@@ -60,7 +61,7 @@ import type { Command } from "./types.js";
  * The dispatch-and-claim RPG.
  *
  * Takes the `/idlerpg` name because it is the game people will actually play;
- * jotun's original keeps its mechanics intact under `/irc-idlerpg`. See
+ * jotun's original keeps its mechanics intact under `/old-idlerpg`. See
  * src/rpg/types.ts for why there are two.
  *
  * Every handler is a shell over src/rpg/engine.ts. Where one looks like it is
@@ -408,6 +409,17 @@ export const command: Command = {
         .addSubcommand((s) => s.setName("divorce").setDescription("End it"))
         .addSubcommand((s) => s.setName("status").setDescription("How it is going")),
     )
+    .addSubcommand((s) =>
+      s
+        .setName("help")
+        .setDescription("How any of this works")
+        .addStringOption((o) =>
+          o
+            .setName("topic")
+            .setDescription("Which part (the overview if omitted)")
+            .addChoices(...HELP_PAGES.map((p) => ({ name: `${p.topic} — ${p.summary}`.slice(0, 100), value: p.topic }))),
+        ),
+    )
     .addSubcommand((s) => s.setName("trivia").setDescription("A question, for coin"))
     .addSubcommand((s) =>
       s
@@ -585,12 +597,18 @@ export const command: Command = {
         return doDuel(interaction);
       case "top":
         return handleTopBoard(interaction);
+      case "help":
+        await interaction.reply({
+          content: helpPage(interaction.options.getString("topic")),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
       case "trivia":
         return handleTrivia(interaction);
       case "maths":
         return handleMaths(interaction);
       default:
-        await interaction.reply({ content: classMenu(), flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: helpPage(null), flags: MessageFlags.Ephemeral });
         return;
     }
   },

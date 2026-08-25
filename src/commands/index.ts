@@ -2,6 +2,7 @@ import { command as ask } from "./ask.js";
 import { command as avatar } from "./avatar.js";
 import { command as bugcat } from "./bugcat.js";
 import { command as chat } from "./chat.js";
+import { command as chess } from "./chess.js";
 import { command as claude } from "./claude.js";
 import { command as eightball } from "./eightball.js";
 import { command as embed } from "./embed.js";
@@ -21,6 +22,7 @@ import { command as stock } from "./stock.js";
 import { command as stop } from "./stop.js";
 import { command as strip } from "./strip.js";
 import { command as usage } from "./usage.js";
+import { command as werewolf } from "./werewolf.js";
 import type { Command, MessageCommand } from "./types.js";
 
 /**
@@ -49,6 +51,8 @@ export const commands: Command[] = [
   avatar,
   idlerpg,
   rpg,
+  chess,
+  werewolf,
   strip,
   embed,
   restock,

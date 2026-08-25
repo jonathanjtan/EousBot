@@ -28,7 +28,18 @@ import {
   handleDuelButton,
   handleMarryButton,
 } from "./commands/rpg.js";
-import { decodeTrivia, handleTriviaButton } from "./commands/rpgsocial.js";
+import {
+  decodeChallenge,
+  decodeDrawOffer,
+  handleChallengeButton,
+  handleDrawButton,
+} from "./commands/chess.js";
+import {
+  decodeMaths,
+  decodeTrivia,
+  handleMathsButton,
+  handleTriviaButton,
+} from "./commands/rpgsocial.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -462,6 +473,24 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const trivia = decodeTrivia(interaction.customId);
       if (trivia) {
         await handleTriviaButton(interaction, trivia);
+        return;
+      }
+
+      const sum = decodeMaths(interaction.customId);
+      if (sum) {
+        await handleMathsButton(interaction, sum);
+        return;
+      }
+
+      const chessChallenge = decodeChallenge(interaction.customId);
+      if (chessChallenge) {
+        await handleChallengeButton(interaction, chessChallenge);
+        return;
+      }
+
+      const drawOffer = decodeDrawOffer(interaction.customId);
+      if (drawOffer) {
+        await handleDrawButton(interaction, drawOffer);
         return;
       }
 

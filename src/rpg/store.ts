@@ -60,6 +60,9 @@ function hydrate(raw: Partial<GameState>): GameState {
     tournament: raw.tournament ?? null,
     arena: raw.arena ?? null,
     event: raw.event ?? null,
+    chess: Array.isArray(raw.chess) ? raw.chess : [],
+    nextChessId: raw.nextChessId ?? 1,
+    werewolf: raw.werewolf ?? null,
   };
 }
 

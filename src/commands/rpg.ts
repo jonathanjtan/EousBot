@@ -45,6 +45,8 @@ import {
   handleAdmin,
   handleArena,
   handleEvent,
+  handleMaths,
+  handleSeason,
   handleTopBoard,
   handleTrivia,
   completeMarriage,
@@ -407,6 +409,14 @@ export const command: Command = {
         .addSubcommand((s) => s.setName("status").setDescription("How it is going")),
     )
     .addSubcommand((s) => s.setName("trivia").setDescription("A question, for coin"))
+    .addSubcommand((s) =>
+      s
+        .setName("maths")
+        .setDescription("A sum, for coin")
+        .addIntegerOption((o) =>
+          o.setName("difficulty").setDescription("1-5; harder pays more").setMinValue(1).setMaxValue(5),
+        ),
+    )
     .addSubcommandGroup((g) =>
       g
         .setName("arena")
@@ -462,6 +472,14 @@ export const command: Command = {
             .addUserOption((o) => o.setName("player").setDescription("Who").setRequired(true)),
         )
         .addSubcommand((s) => s.setName("clear").setDescription("Clear a stuck raid, match or tournament"))
+        .addSubcommand((s) =>
+          s
+            .setName("season")
+            .setDescription("Start a long seasonal event")
+            .addIntegerOption((o) =>
+              o.setName("which").setDescription("Which season (random if omitted)").setMinValue(0).setMaxValue(3),
+            ),
+        )
         .addSubcommand((s) =>
           s
             .setName("event")
@@ -537,7 +555,9 @@ export const command: Command = {
             });
             return;
           }
-          return sub === "event" ? handleEvent(interaction) : handleAdmin(interaction, sub);
+          if (sub === "event") return handleEvent(interaction);
+          if (sub === "season") return handleSeason(interaction);
+          return handleAdmin(interaction, sub);
         }
       }
     }
@@ -567,6 +587,8 @@ export const command: Command = {
         return handleTopBoard(interaction);
       case "trivia":
         return handleTrivia(interaction);
+      case "maths":
+        return handleMaths(interaction);
       default:
         await interaction.reply({ content: classMenu(), flags: MessageFlags.Ephemeral });
         return;

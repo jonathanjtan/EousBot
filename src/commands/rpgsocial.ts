@@ -68,9 +68,12 @@ import {
   answerTrivia,
   askTrivia,
   enterArena,
+  makeMathProblem,
+  mathPrize,
   openArena,
   runArena,
   startEvent,
+  startSeason,
 } from "../rpg/arena.js";
 import { activeEvent } from "../rpg/worldevent.js";
 import type { Ctx } from "../rpg/engine.js";
@@ -831,4 +834,91 @@ export function eventLine(now: number): string | null {
   const event = activeEvent(world(), now);
   if (!event) return null;
   return `**${event.name}** — ${event.blurb} (ends <t:${Math.floor(event.endsAt / 1000)}:R>)`;
+}
+
+// ------------------------------------------------------------------ maths ---
+
+export const MATHS_PREFIX = "rpg:maths";
+
+/** `rpg:maths:<difficulty>:<correctIndex>:<chosenIndex>`. */
+export function encodeMaths(difficulty: number, correct: number, chosen: number): string {
+  return `${MATHS_PREFIX}:${difficulty}:${correct}:${chosen}`;
+}
+
+export function decodeMaths(
+  customId: string,
+): { difficulty: number; correct: number; chosen: number } | null {
+  const parts = customId.split(":");
+  if (parts.length !== 5 || `${parts[0]}:${parts[1]}` !== MATHS_PREFIX) return null;
+  const [difficulty, correct, chosen] = [Number(parts[2]), Number(parts[3]), Number(parts[4])];
+  if (![difficulty, correct, chosen].every(Number.isInteger)) return null;
+  return { difficulty, correct, chosen };
+}
+
+/**
+ * A generated sum.
+ *
+ * Unlike trivia, the answer travels in the button id rather than an index into
+ * a bank -- the problem is synthesised per call and there is nothing to look it
+ * up in afterwards. Nothing is at stake in forging one beyond a few hundred
+ * coin, and the alternative is holding server-side state for every question
+ * anyone has ever been asked.
+ */
+export async function handleMaths(interaction: I): Promise<void> {
+  const difficulty = interaction.options.getInteger("difficulty") ?? 2;
+  const problem = makeMathProblem(Math.random, difficulty);
+
+  await interaction.reply({
+    content:
+      `**${problem.prompt}**\n_First correct answer takes ${coin(mathPrize(problem.difficulty))}._`,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        ...problem.options.map((option, i) =>
+          new ButtonBuilder()
+            .setCustomId(encodeMaths(problem.difficulty, problem.answer, i))
+            .setLabel(option.slice(0, 80))
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      ),
+    ],
+  });
+}
+
+export async function handleMathsButton(
+  interaction: ButtonInteraction,
+  target: { difficulty: number; correct: number; chosen: number },
+): Promise<void> {
+  const state = world();
+  const character = find(state, interaction.user.id);
+  if (!character) {
+    await interaction.reply({
+      content: "You have no character yet. `/idlerpg start` makes one.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const correct = target.chosen === target.correct;
+  const prize = correct ? mathPrize(target.difficulty) : 0;
+  if (correct) {
+    character.money += prize;
+    save();
+  }
+  await interaction.update({
+    content: correct
+      ? `**${interaction.user.username}** got it. ${coin(prize)} awarded.`
+      : `**${interaction.user.username}** got it wrong.`,
+    components: [],
+  });
+}
+
+// --------------------------------------------------------------- seasonal ---
+
+export async function handleSeason(interaction: I): Promise<void> {
+  const index = interaction.options.getInteger("which");
+  const event = startSeason(world(), ctx(), index ?? undefined);
+  save();
+  await interaction.reply(
+    [`**${event.name}**`, event.blurb, `Ends <t:${Math.floor(event.endsAt / 1000)}:R>.`].join("\n"),
+  );
 }

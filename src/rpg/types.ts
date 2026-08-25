@@ -191,6 +191,49 @@ export interface Arena {
   winnerId: string | null;
 }
 
+/** A chess game in progress between two players. */
+export interface ChessGame {
+  id: number;
+  whiteId: string;
+  blackId: string;
+  /** The whole position, so nothing else has to be persisted. */
+  fen: string;
+  /** Coin each side staked, paid to the winner. Zero for a friendly. */
+  stake: number;
+  startedAt: number;
+  lastMoveAt: number;
+}
+
+export type WerewolfRole = "wolf" | "seer" | "guard" | "villager";
+
+export interface WerewolfPlayer {
+  userId: string;
+  role: WerewolfRole;
+  alive: boolean;
+}
+
+/**
+ * A game of werewolf.
+ *
+ * Phases advance on a command rather than a timer. A timed phase means the game
+ * ends at 3am for whoever was asleep, and a Discord server is not a table
+ * everyone is sitting at.
+ */
+export interface Werewolf {
+  hostId: string;
+  players: WerewolfPlayer[];
+  phase: "lobby" | "night" | "day" | "over";
+  night: number;
+  /** Wolf user id -> the victim they named. Majority decides. */
+  wolfVotes: Record<string, string>;
+  guardTarget: string | null;
+  seerTarget: string | null;
+  /** Voter -> accused, during the day. */
+  votes: Record<string, string>;
+  log: string[];
+  winner: "village" | "wolves" | null;
+}
+
 export interface GameState {
   characters: Record<string, Character>;
   guilds: Record<string, Guild>;
@@ -200,6 +243,9 @@ export interface GameState {
   tournament: Tournament | null;
   arena: Arena | null;
   event: WorldEvent | null;
+  chess: ChessGame[];
+  nextChessId: number;
+  werewolf: Werewolf | null;
 }
 
 /** Something the engine wants said. Delivery is not its problem. */

@@ -661,19 +661,76 @@ result. Decisions are *spaced* rather than absent, which is what "idle" has
 meant since Cookie Clicker.
 
 ```
-/idlerpg start class:mage          make a character
-/idlerpg classes                   what each class does
-/idlerpg adventures                where you could go, with the real odds
-/idlerpg adventure difficulty:7    go
-/idlerpg status | claim            how long left; collect what you found
-/idlerpg backpack | equip | sell | sellall
-/idlerpg open rarity:rare          open a crate
-/idlerpg duel player:@someone stake:250
-/idlerpg profile [player] | top
+/idlerpg start class:mage race:elf      make a character
+/idlerpg adventures                     where you could go, with the real odds
+/idlerpg adventure difficulty:7         go
+/idlerpg status | claim                 how long left; collect what you found
 ```
 
 The dice are rolled on **claim**, not on dispatch. If the outcome were decided
 up front the intervening hours would be theatre.
+
+### Everything else
+
+```
+/idlerpg item      backpack · equip · sell · sellall · open · give
+/idlerpg god       list · status · follow · sacrifice
+/idlerpg store     list · buy
+/idlerpg guild     create · join · leave · info · list · kick · promote · demote
+                   handover · disband · deposit · withdraw · upgrade
+                   ally · unally · battle
+/idlerpg market    list · sell · buy · unlist
+/idlerpg raid      call · hit · status
+/idlerpg arena     open · join · run · status
+/idlerpg tournament open · join · run · status
+/idlerpg marry     propose · court · divorce · status
+/idlerpg bet       flip · dice
+/idlerpg admin     grant · setlevel · spawn · reset · clear · event · season
+/idlerpg           profile · classes · races · duel · top · trivia · maths
+
+/chess             challenge · move · board · draw · resign
+/werewolf          open · join · leave · start · night · dawn · vote · dusk
+                   status · end
+```
+
+Some notes on why things are the way they are:
+
+- **Gods** exist so an item you cannot wear has a second use besides the shop.
+  Sacrificing converts it to favour, and favour buys better odds.
+- **Races** are deliberately weaker than classes. A new player picks both in the
+  same breath with no information about either, so exactly one of those choices
+  is allowed to be load-bearing.
+- **The arena is not the tournament.** A bracket rewards the strongest character
+  and everyone knows who that is beforehand; the arena is a lottery gear only
+  nudges. A titan with four times the field's power wins more than chance and
+  under half the time, and both bounds are asserted.
+- **The shop is priced above what crates yield.** If buying crates were
+  profitable the only correct move would be to buy them forever.
+- **Wagers, duels, marriages and chess games need a button.** Nothing moves
+  another person's coin because a third party ran a command.
+
+### Chess is a real engine
+
+The Discord original wraps a Python chess library and renders boards through an
+image service that no longer answers. Neither is available here, so
+`src/rpg/chess.ts` is move generation with legality, castling, en passant,
+promotion and the draw rules.
+
+Move generation is the part of a chess program that is subtly wrong for years,
+so it is validated by **perft** — counting move-tree leaves against numbers the
+chess world already agrees on:
+
+| Position | Depth | Leaves |
+|---|---|---|
+| Opening | 4 | 197,281 |
+| Kiwipete | 3 | 97,862 |
+| En-passant endgame | 4 | 43,238 |
+| Promotion-heavy | 3 | 9,467 |
+| Cramped middlegame | 3 | 62,379 |
+
+One missing capture or one castle through check moves the total. Boards render
+as unicode text, because a picture is not worth a network dependency that can
+take the feature down with it — which is exactly what happened upstream.
 
 ### It is a game, and that is measured
 
@@ -698,8 +755,7 @@ And the decision pays, which is the whole point:
 
 The best difficulty is an **interior** optimum that moves as your gear
 improves — at level 1 you should reach to 3, at level 20 you should take 15 and
-not the 22 you have unlocked. Class spread is 1.5 levels against the IRC
-game's 0.4, and no class is within 1.6x of dominating.
+not the 22 you have unlocked.
 
 That balance did not arrive by luck. The first version had rewards scaling
 linearly with difficulty, which left reward-per-hour flat, which made the
@@ -708,6 +764,12 @@ reached by a different route. The suite caught it: the "choose well" policy was
 picking difficulty 1. `REWARD_EXPONENT` in `src/rpg/rules.ts` is the fix and
 carries the story.
 
+The economy tests guard **conservation** rather than happy paths. Every
+transfer — a gift, a sale, a guild battle, a bank deposit, a tournament
+payout — is asserted against the realm's total coin, and an item must never
+exist in two backpacks or none. Those are the bugs that quietly ruin an economy
+and they are invisible in a test that only checks the sale went through.
+
 ### What this is not
 
 A rewrite of [the archived Discord IdleRPG](https://github.com/Gelbpunkt/IdleRPG),
@@ -715,10 +777,12 @@ which is AGPL-3.0 Python with a dead upstream and a dead support API. This is
 an independent implementation of the *genre's* loop — its own formulas, classes,
 vocabulary and prose — informed by that design rather than derived from its code.
 
-Built here: adventures, classes and their tiers, equipment, rarities and
-crates, the coin economy, and wagered duels. **Not** built: guilds, alliances,
-raids, trading, tournaments, gods, marriage, pets, gambling. Those are the
-social layer, and they are the obvious next thing.
+**Not built**, and deliberately: the image filters (they ran through the same
+dead service), and the infrastructure cogs — help, error handling, scheduling,
+sharding, i18n, top.gg voting, Patreon — all of which EousBot already provides
+its own way. The seasonal cogs are four near-identical modules whose shared
+mechanic is "a limited-time event with a special reward track", so they are
+definitions in the event system rather than four modules.
 
 ## Adding commands
 
@@ -802,6 +866,14 @@ src/
     engine.ts     the verbs; no config, no discord.js
     format.ts     character sheets and the adventure table
     store.ts      the world on disk
+    economy.ts    gods, the shop, gifts, the player market
+    guilds.ts     guilds, alliances, raid bosses
+    contests.ts   tournaments, marriage, wagers
+    arena.ts      free-for-alls, trivia, maths, seasons
+    worldevent.ts realm-wide modifiers (own module to avoid an import cycle)
+    chess.ts      a chess engine, validated by perft
+    chessgame.ts  chess games between players
+    werewolf.ts   werewolf, as a state machine
 infra/
   install.sh      install/update on an existing Linux box
   eousbot.service systemd user unit

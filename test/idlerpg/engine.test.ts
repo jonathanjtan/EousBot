@@ -607,3 +607,70 @@ test("findByName ignores case and returns null for a stranger", () => {
   assert.equal(engine.findByName(state, "pLaYeR0")?.userId, "u0");
   assert.equal(engine.findByName(state, "Nobody"), null);
 });
+
+test("a frozen realm charges nobody for talking", () => {
+  const { state, c } = realmOf(1);
+  const player = state.players.u0;
+  assert.ok(player);
+  player.level = 13;
+  player.next = 1814;
+  state.paused = true;
+
+  const before = player.next;
+  const out = engine.penalizeMessage(state, "u0", c, 40);
+
+  assert.equal(out.length, 0, "a frozen realm says nothing about a penalty it did not apply");
+  assert.equal(player.next, before, "the clock must not move while it is held");
+  assert.equal(player.penalties.message, 0);
+
+  // And the tick is not quietly crediting it back either: still held.
+  engine.tick(state, 600, c);
+  assert.equal(player.next, before);
+});
+
+test("leaving a frozen realm stops the clock without costing time", () => {
+  const { state, c } = realmOf(1);
+  const player = state.players.u0;
+  assert.ok(player);
+  player.level = 13;
+  state.paused = true;
+
+  const before = player.next;
+  engine.logout(state, "u0", c);
+
+  assert.equal(player.online, false, "the choice is still honoured");
+  assert.equal(player.suspended, true);
+  assert.equal(player.next, before, "but it costs nothing while nothing is moving");
+  assert.equal(player.penalties.logout, 0);
+});
+
+test("a penalty ceiling under ten seconds still caps a nick change", () => {
+  const { state, c } = realmOf(1);
+  const player = state.players.u0;
+  assert.ok(player);
+  player.level = 50;
+
+  // A ceiling of 5 divides to 0, which penalty() reads as "uncapped" unless
+  // the floor holds. Uncapped, this rename costs the better part of six hours.
+  const ctx = { ...c, tuning: { ...rules.DEFAULT_TUNING, penLimit: 5 } };
+  engine.penalizeNick(state, "u0", ctx);
+
+  assert.ok(
+    player.penalties.nick <= 5,
+    `a nick change cost ${player.penalties.nick}s in a realm capped at 5s`,
+  );
+});
+
+test("presence-driven realms tell a player what actually stops their clock", () => {
+  const { state, c } = realmOf(1);
+  const player = state.players.u0;
+  assert.ok(player);
+  player.level = 13;
+
+  const quiet = text(engine.penalizeMessage(state, "u0", c, 40));
+  assert.ok(!quiet.includes("only runs while you are online"));
+
+  player.penalties.message = 0;
+  const told = text(engine.penalizeMessage(state, "u0", { ...c, presenceDriven: true }, 40));
+  assert.match(told, /only runs while you are online/);
+});

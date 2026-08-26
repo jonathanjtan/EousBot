@@ -16,6 +16,20 @@ import {
  * /old-idlerpg status and anything added later.
  */
 
+/**
+ * Why a clock is not moving, in the player's own terms.
+ *
+ * A stopped clock used to render as a bare "(idle stopped)", which named the
+ * symptom and none of the three quite different causes. A player cannot act on
+ * the symptom, and a frozen realm was undiscoverable from inside the game.
+ */
+function clockNote(player: Player, state: GameState): string {
+  if (state.paused) return " (the realm is frozen)";
+  if (player.suspended) return " (idle stopped; `/old-idlerpg login` restarts it)";
+  if (!player.online) return " (idle stopped; your clock runs only while you are online)";
+  return "";
+}
+
 export function characterSheet(
   player: Player,
   state: GameState,
@@ -30,11 +44,11 @@ export function characterSheet(
 
   const embed = new EmbedBuilder()
     .setTitle(`${player.name}, level ${player.level} ${player.charClass}`)
-    .setColor(player.online ? 0x2ecc71 : 0x95a5a6)
+    .setColor(player.online && !state.paused ? 0x2ecc71 : 0x95a5a6)
     .addFields(
       {
         name: "Next level",
-        value: player.online ? duration(player.next) : `${duration(player.next)} (idle stopped)`,
+        value: `${duration(player.next)}${clockNote(player, state)}`,
         inline: true,
       },
       { name: "Item sum", value: `${itemSum(player)}`, inline: true },

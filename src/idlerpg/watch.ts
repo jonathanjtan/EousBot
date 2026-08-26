@@ -32,6 +32,7 @@ export function context(now = Date.now()): EngineContext {
     now,
     tuning: config.idlerpg.tuning,
     bossName: client?.user?.username ?? "the bot",
+    presenceDriven: presenceDriven(),
   };
 }
 
@@ -240,9 +241,15 @@ export async function publish(announcements: Announcement[]): Promise<void> {
  * error anywhere to explain it. Falling back to manual is the recoverable
  * failure; a silently dead game is not.
  */
+let warnedAboutPresenceIntent = false;
+
 export function presenceDriven(): boolean {
   if (config.idlerpg.onlineSource !== "presence") return false;
   if (!client?.options.intents.has(GatewayIntentBits.GuildPresences)) {
+    // Once. context() calls this every tick, and a misconfigured realm would
+    // otherwise write this line six times a minute for as long as it ran.
+    if (warnedAboutPresenceIntent) return false;
+    warnedAboutPresenceIntent = true;
     log.error(
       "IDLERPG_ONLINE_SOURCE=presence needs the GuildPresences intent; " +
         "falling back to manual /old-idlerpg login. Add `presence` to " +

@@ -97,6 +97,12 @@ export interface EngineContext {
    * holds here.
    */
   bossName: string;
+  /**
+   * Whether a player's clock follows their Discord status. Injected rather
+   * than read, because the engine imports no config -- see the header. Only
+   * affects what players are told, never what the game does.
+   */
+  presenceDriven?: boolean;
 }
 
 export function newWorld(now: number): GameState {
@@ -218,6 +224,14 @@ export function logout(state: GameState, userId: string, ctx: EngineContext): An
   const player = state.players[userId];
   if (!player || !player.online) return [];
 
+  // Stepping out of a frozen realm is still a choice worth honouring, but it
+  // cannot cost time that is not moving. The flag changes; the clock does not.
+  if (state.paused) {
+    player.online = false;
+    player.suspended = true;
+    return [say(`**${player.name}** has stopped idling. The realm is frozen, so it cost nothing.`)];
+  }
+
   const out = desertQuest(state, player, ctx);
 
   const cost = penalty(PENALTY_BASE.logout, player.level, ctx.tuning);
@@ -256,7 +270,10 @@ export function penalizeMessage(
   characters?: number,
 ): Announcement[] {
   const player = state.players[userId];
-  if (!player || !player.online) return [];
+  // Nothing is charged while the realm is frozen: `admin pause` promises
+  // clocks are held, and this hook runs off a Discord event rather than the
+  // tick, so without this it keeps billing into a clock that cannot repay.
+  if (!player || !player.online || state.paused) return [];
 
   const out = desertQuest(state, player, ctx);
 
@@ -276,6 +293,11 @@ export function penalizeMessage(
       userId,
       `Penalty of ${duration(cost)} added to your clock for speaking. That is what ` +
         `talking costs at level ${player.level}. Next level in ${duration(player.next)}.\n` +
+        (ctx.presenceDriven
+          ? `Talking is rarely what holds a level back. Your clock only runs while ` +
+            `you are online in Discord, and it stops whenever you go offline or ` +
+            `invisible.\n`
+          : "") +
         `_You will not be told again for a while; \`/old-idlerpg whoami\` keeps the running total._`,
       "message-penalty",
     ),
@@ -296,7 +318,10 @@ export function penalizePart(
   ctx: EngineContext,
 ): Announcement[] {
   const player = state.players[userId];
-  if (!player || !player.online) return [];
+  // Nothing is charged while the realm is frozen: `admin pause` promises
+  // clocks are held, and this hook runs off a Discord event rather than the
+  // tick, so without this it keeps billing into a clock that cannot repay.
+  if (!player || !player.online || state.paused) return [];
 
   const out = desertQuest(state, player, ctx);
   const cost = penalty(PENALTY_BASE.part, player.level, ctx.tuning);
@@ -326,11 +351,17 @@ export function penalizeNick(
   ctx: EngineContext,
 ): Announcement[] {
   const player = state.players[userId];
-  if (!player || !player.online) return [];
+  // Nothing is charged while the realm is frozen: `admin pause` promises
+  // clocks are held, and this hook runs off a Discord event rather than the
+  // tick, so without this it keeps billing into a clock that cannot repay.
+  if (!player || !player.online || state.paused) return [];
 
+  // Floored at one second, because penalty() reads a ceiling of 0 as
+  // "uncapped": any penLimit below ten would otherwise divide down to zero and
+  // make renaming the one penalty in the game with no ceiling at all.
   const ceiling =
     ctx.tuning.penLimit > 0
-      ? Math.floor(ctx.tuning.penLimit / NICK_PENALTY_DIVISOR)
+      ? Math.max(1, Math.floor(ctx.tuning.penLimit / NICK_PENALTY_DIVISOR))
       : 0;
   const cost = penalty(PENALTY_BASE.nick, player.level, {
     ...ctx.tuning,

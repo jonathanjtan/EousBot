@@ -122,10 +122,31 @@ test("nothing here flags its own intent instead of stating the thing", () => {
   assert.deepEqual(offences, [], `intent-flagging words:\n${offences.join("\n")}`);
 });
 
-test("the help does not use 'not just X, but Y', or hedge in stacks", () => {
-  const help = readFileSync("src/rpg/help.ts", "utf8");
-  assert.doesNotMatch(help, /not just .{1,40}, but/i, "say the thing you mean");
-  assert.doesNotMatch(help, /could potentially|it might be argued/i, "stacked hedge");
+/**
+ * Scoped to every module a player reads, not only the manual.
+ *
+ * It used to read src/rpg/help.ts alone, which is how "The dice are rolled
+ * then, not now" survived in a command reply: a second sentence restating the
+ * first in the negative, in a file the rule never opened.
+ */
+test("nothing the game says restates itself in the negative, or hedges in stacks", () => {
+  const patterns: [RegExp, string][] = [
+    [/not just .{1,40}, but/i, "say the thing you mean"],
+    [/could potentially|it might be argued/i, "stacked hedge"],
+    // "then, not now" and its family: the same fact twice, second time negated.
+    // Narrow to these four adverbs, because a contrast carrying real
+    // information reads the same way ("at parity, not majority") and is fine.
+    [/\b(then|now|here|there), not (then|now|here|there)\b/i, "restated in the negative"],
+  ];
+  const offences: string[] = [];
+  for (const path of USER_FACING) {
+    for (const { line, text } of speech(path)) {
+      for (const [pattern, why] of patterns) {
+        if (pattern.test(text)) offences.push(`${path}:${line} ${why}: ${text.trim().slice(0, 70)}`);
+      }
+    }
+  }
+  assert.deepEqual(offences, [], `restatement:\n${offences.join("\n")}`);
 });
 
 /**

@@ -52,7 +52,7 @@ import {
   handleTrivia,
   completeMarriage,
 } from "./rpgsocial.js";
-import { DEFAULT_TUNING, coin, shortDuration } from "../rpg/rules.js";
+import { DEFAULT_TUNING, coin } from "../rpg/rules.js";
 import { save, world } from "../rpg/store.js";
 import { RARITIES, type ClassId, type RaceId, type Rarity } from "../rpg/types.js";
 import type { Command } from "./types.js";
@@ -743,10 +743,11 @@ async function doAdventure(interaction: Interaction): Promise<void> {
   await interaction.reply(
     [
       `**${result.character.name}** has gone to ${result.name}.`,
-      `Difficulty ${result.difficulty}, back in ${shortDuration(result.endsAt - Date.now())}, ` +
-        `<t:${Math.floor(result.endsAt / 1000)}:R>.`,
+      // One rendering of the time. <t:...:R> already reads as "in 1 hour",
+      // so pairing it with a duration printed the same fact twice.
+      `Difficulty ${result.difficulty}, back <t:${Math.floor(result.endsAt / 1000)}:R>.`,
       "",
-      "_`/idlerpg claim` when the time is up. The dice are rolled then, not now._",
+      "_`/idlerpg claim` when time's up._",
     ].join("\n"),
   );
 }
@@ -768,7 +769,7 @@ async function doStatus(interaction: Interaction): Promise<void> {
   await interaction.reply({
     content:
       left > 0
-        ? `Difficulty ${character.expedition.difficulty}, back <t:${Math.floor(character.expedition.endsAt / 1000)}:R> (${shortDuration(left)}).`
+        ? `Difficulty ${character.expedition.difficulty}, back <t:${Math.floor(character.expedition.endsAt / 1000)}:R>.`
         : "You are back. `/idlerpg claim` to see how it went.",
     flags: MessageFlags.Ephemeral,
   });

@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { announce } from "../gamechannel.js";
 import { log } from "../log.js";
 import { markNotified, pendingClaims, reminder } from "./notify.js";
 import { save, world } from "./store.js";
@@ -45,25 +46,20 @@ async function sweep(): Promise<void> {
     const due = pendingClaims(state, Date.now());
     if (due.length === 0) return;
 
-    for (const character of due) {
-      try {
-        const user = await client?.users.fetch(character.userId);
-        await user?.send(reminder(character));
-        // Marked only on a delivered DM, so a Discord hiccup costs a delay
-        // rather than the reminder itself.
-        markNotified(character);
-      } catch (err) {
-        // Closed DMs are a legitimate setting. Mark it anyway: retrying every
-        // minute forever would be the loudest possible way to respect that.
-        markNotified(character);
-        log.debug("Could not DM a claim reminder", {
-          userId: character.userId,
-          err: String(err),
-        });
-      }
+    // One post for the whole sweep. A minute's worth of adventures finishing
+    // together is normal on a busy realm, and a message each would be four
+    // pings in a row where one message carrying four mentions does the job.
+    const posted = await announce(client, due.map(reminder));
+    if (!posted) {
+      log.warn("Could not post claim reminders; will try again", { count: due.length });
+      return;
     }
+
+    // Marked only once the channel has it, so a Discord hiccup costs a minute
+    // rather than the reminder itself.
+    for (const character of due) markNotified(character);
     save();
-    log.info("Sent claim reminders", { count: due.length });
+    log.info("Posted claim reminders", { count: due.length });
   } catch (err) {
     log.error("Claim reminder sweep threw", { err: String(err) });
   } finally {

@@ -168,21 +168,29 @@ export interface GameState {
  * Something the engine wants said.
  *
  * The engine never touches Discord; it returns these and lets idlerpg/watch.ts
- * deliver them. That is what makes a tick testable -- and it is also why item
- * finds can stay private without the rules module knowing what a DM is.
+ * deliver them. That is what makes a tick testable -- and it is also why the
+ * rules module can produce a line about one player without knowing where it
+ * goes.
+ *
+ * Every one of these goes to the game channel. There is no private kind: see
+ * gamechannel.ts for why the realm never DMs anybody.
  */
 export interface Announcement {
-  /** `channel` goes to the game channel; `private` is DMed to `userId`. */
-  to: "channel" | "private";
-  userId?: string;
   text: string;
   /**
-   * Marks a private line as one of a repeating kind, so the deliverer can send
-   * it once and then stay quiet for a while.
+   * Whose news this is, for a line about a single player.
    *
-   * The talking penalty needs this and nothing else does: on IRC a NOTICE per
-   * offence is free, but a Discord DM per message would make the bot the
-   * loudest thing in anyone's inbox and get it blocked within a day.
+   * Carried for throttling alone. The text names the player itself, and the
+   * deliverer never turns this into a mention.
+   */
+  userId?: string;
+  /**
+   * Marks a line as one of a repeating kind, so the deliverer can post it once
+   * and then stay quiet for a while.
+   *
+   * The two penalties a player can incur over and over need this: on IRC a
+   * NOTICE per offence is free, but a channel line per message would make the
+   * bot the loudest thing in the room and the penalty louder than the offence.
    */
   throttleKey?: string;
 }

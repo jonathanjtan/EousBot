@@ -32,7 +32,7 @@ const OVERVIEW: HelpPage = {
     "/idlerpg adventures",
     "/idlerpg adventure difficulty:3",
     "```",
-    "Then leave. You get a DM when it finishes. Run `/idlerpg claim` to collect.",
+    "Then leave. The channel pings you when it finishes. Run `/idlerpg claim` to collect.",
     "",
     "The dice are rolled when you claim, not when you leave.",
     "",

@@ -46,8 +46,8 @@ import { currentSha } from "./git.js";
 import { log } from "./log.js";
 import { acquire, describe, held, release } from "./inflight.js";
 import { penalizeMessage, penalizeNick, penalizePart } from "./idlerpg/engine.js";
+import { checkGameChannel } from "./gamechannel.js";
 import {
-  checkChannel,
   context as idlerpgContext,
   inPenaltyScope,
   isPresent,
@@ -158,10 +158,12 @@ client.once(Events.ClientReady, async (ready) => {
   // Tells dispatch-RPG players when their adventure is done. The only timer
   // that game owns, and the reason is that nobody is looking by definition.
   startClaimReminders(client);
+  // Unconditional: claim reminders post to this channel whether or not the
+  // idle game is switched on, so a bad id has to be found either way.
+  await checkGameChannel(client).catch((err) =>
+    log.warn("Game channel check failed", { err: String(err) }),
+  );
   if (config.idlerpg.enabled) {
-    await checkChannel().catch((err) =>
-      log.warn("Idle RPG channel check failed", { err: String(err) }),
-    );
     const guild = client.guilds.cache.get(config.discord.guildId);
     if (guild) {
       await syncAllPresence(guild).catch((err) =>

@@ -144,13 +144,18 @@ export function createPlayer(
 // ------------------------------------------------------------------ helpers ---
 
 function say(text: string): Announcement {
-  return { to: "channel", text };
+  return { text };
 }
 
-function tell(userId: string, text: string, throttleKey?: string): Announcement {
-  return throttleKey
-    ? { to: "private", userId, text, throttleKey }
-    : { to: "private", userId, text };
+/**
+ * A line about one player.
+ *
+ * Posted in the same channel as everything else and written in the third
+ * person, so it reads as news rather than as an aside to whoever it happened
+ * to. The userId rides along only so a repeating kind can be throttled.
+ */
+function about(userId: string, text: string, throttleKey?: string): Announcement {
+  return throttleKey ? { userId, text, throttleKey } : { userId, text };
 }
 
 function onlinePlayers(state: GameState): Player[] {
@@ -286,19 +291,19 @@ export function penalizeMessage(
   const cost = penalty(base, player.level, ctx.tuning);
   player.penalties.message += cost;
   moveClock(player, cost);
-  // Told privately: a channel line per message would make the penalty louder
-  // than the thing it is penalising.
+  // Throttled: a channel line per message would make the penalty louder than
+  // the thing it is penalising.
   out.push(
-    tell(
+    about(
       userId,
-      `Penalty of ${duration(cost)} added to your clock for speaking. That is what ` +
-        `talking costs at level ${player.level}. Next level in ${duration(player.next)}.\n` +
+      `**${player.name}** loses ${duration(cost)} to their clock for speaking. That is ` +
+        `what talking costs at level ${player.level}. Next level in ${duration(player.next)}.\n` +
         (ctx.presenceDriven
-          ? `Talking is rarely what holds a level back. Your clock only runs while ` +
-            `you are online in Discord, and it stops whenever you go offline or ` +
+          ? `Talking is rarely what holds a level back. A clock only runs while its ` +
+            `owner is online in Discord, and it stops whenever they go offline or ` +
             `invisible.\n`
           : "") +
-        `_You will not be told again for a while; \`/old-idlerpg whoami\` keeps the running total._`,
+        `_The next few pass without comment; \`/old-idlerpg whoami\` keeps the running total._`,
       "message-penalty",
     ),
   );
@@ -371,10 +376,10 @@ export function penalizeNick(
   moveClock(player, cost);
 
   return [
-    tell(
+    about(
       player.userId,
-      `Penalty of ${duration(cost)} added to your clock for changing your name. ` +
-        `Next level in ${duration(player.next)}.`,
+      `**${player.name}** loses ${duration(cost)} to their clock for changing their ` +
+        `name. Next level in ${duration(player.next)}.`,
       "nick-penalty",
     ),
   ];
@@ -724,10 +729,10 @@ function evilness(state: GameState, ctx: EngineContext): Announcement[] {
     const mine = me.items[slot];
     if (!theirs || !mine || theirs.level <= mine.level) {
       return [
-        tell(
+        about(
           me.userId,
-          `You crept up on ${target.name}'s ${SLOT_NAMES[slot]} and found it worse ` +
-            `than your own. You went back to bed.`,
+          `**${me.name}** crept up on **${target.name}**'s ${SLOT_NAMES[slot]}, found ` +
+            `it worse than their own, and went back to bed.`,
         ),
       ];
     }
@@ -969,9 +974,11 @@ function levelUp(state: GameState, player: Player, ctx: EngineContext): Announce
 /**
  * Rolls an item for a level-up.
  *
- * Reported privately, as the original does: the realm learns what you are
- * carrying only by fighting you, which is most of what makes fighting
- * interesting.
+ * The original sent this to the finder alone, so the realm learned what you
+ * carried only by fighting you. The realm reads it in the channel now, which
+ * costs the game that bit of concealment and buys back a running account of
+ * who is arming up. Nothing in the rules reads gear off an announcement, so
+ * the change is one of information rather than of odds.
  */
 export function findItem(player: Player, ctx: EngineContext): Announcement[] {
   const ordinary = rollItemLevel(player.level, ctx.rng);
@@ -980,10 +987,11 @@ export function findItem(player: Player, ctx: EngineContext): Announcement[] {
   if (unique) {
     player.items[unique.def.slot] = { level: unique.level, unique: unique.def.name };
     return [
-      tell(
+      about(
         player.userId,
-        `The light of the gods falls on you. You have found ${unique.def.name}, ` +
-          `a level ${unique.level} ${SLOT_NAMES[unique.def.slot]}. ${unique.def.blurb}`,
+        `The light of the gods falls on **${player.name}**. They have found ` +
+          `${unique.def.name}, a level ${unique.level} ` +
+          `${SLOT_NAMES[unique.def.slot]}. ${unique.def.blurb}`,
       ),
     ];
   }
@@ -995,18 +1003,18 @@ export function findItem(player: Player, ctx: EngineContext): Announcement[] {
   if (ordinary > held.level) {
     player.items[slot] = { level: ordinary, unique: null };
     return [
-      tell(
+      about(
         player.userId,
-        `You found a level ${ordinary} ${SLOT_NAMES[slot]}. Yours was level ` +
-          `${held.level}, so luck is with you.`,
+        `**${player.name}** found a level ${ordinary} ${SLOT_NAMES[slot]}. Theirs was ` +
+          `level ${held.level}, so luck is with them.`,
       ),
     ];
   }
   return [
-    tell(
+    about(
       player.userId,
-      `You found a level ${ordinary} ${SLOT_NAMES[slot]}. Yours is level ` +
-        `${held.level}, so you leave it where it lies.`,
+      `**${player.name}** found a level ${ordinary} ${SLOT_NAMES[slot]}. Theirs is ` +
+        `level ${held.level}, so they leave it where it lies.`,
     ),
   ];
 }

@@ -1,8 +1,8 @@
-import { GatewayIntentBits, type Client, type Guild, type TextChannel } from "discord.js";
+import { GatewayIntentBits, type Client, type Guild } from "discord.js";
 import { config } from "../config.js";
+import { announce } from "../gamechannel.js";
 import { log } from "../log.js";
 import { setPresence, tick, type EngineContext } from "./engine.js";
-import { batch } from "./format.js";
 import { flush, touch, world } from "./store.js";
 import type { Announcement, GameState } from "./types.js";
 
@@ -17,13 +17,10 @@ import type { Announcement, GameState } from "./types.js";
 /** setTimeout stores its delay in a signed 32-bit int; anything longer wraps. */
 const MAX_TIMER_MS = 2_147_483_647;
 
-/** Discord rejects a message over 2000 characters outright; this leaves room. */
-const MESSAGE_LIMIT = 1_900;
-
 let client: Client | null = null;
 let timer: NodeJS.Timeout | null = null;
 let lastSaveAt = 0;
-/** Per-user, per-kind: when a throttled private notice may next be sent. */
+/** Per-user, per-kind: when a throttled notice may next be posted. */
 const noticeCooldowns = new Map<string, number>();
 
 export function context(now = Date.now()): EngineContext {
@@ -110,112 +107,38 @@ async function run(): Promise<void> {
 /**
  * Sends what the engine produced.
  *
- * Channel lines are concatenated into as few messages as Discord will take:
- * a level-up alone is four lines, and posting each as its own message would
- * make the game unreadable and burn the channel's rate limit for no gain.
+ * Everything goes to the game channel, concatenated into as few messages as
+ * Discord will take: a level-up alone is four lines, and posting each as its
+ * own message would make the game unreadable and burn the channel's rate limit
+ * for no gain.
+ *
+ * The only lines dropped here are repeating ones whose kind was posted for
+ * that player recently. That is the two penalties a player can incur over and
+ * over, talking and renaming, and dropping them is what keeps a penalty from
+ * being noisier than the offence.
  */
 export async function deliver(announcements: Announcement[]): Promise<void> {
   if (announcements.length === 0 || !client) return;
-
-  const channelLines: string[] = [];
-  for (const item of announcements) {
-    if (item.to === "channel") {
-      channelLines.push(item.text);
-      continue;
-    }
-    if (item.userId) await whisper(item);
-  }
-
-  for (const chunk of batch(channelLines, MESSAGE_LIMIT)) {
-    await announce(chunk);
-  }
+  const lines = announcements.filter((item) => !throttled(item)).map((item) => item.text);
+  await announce(client, lines);
 }
 
 /**
- * A DM, unless this kind of DM was already sent recently.
+ * Whether this line's kind was already posted for this player recently, and
+ * stamps the cooldown when it was not.
  *
- * A failed DM is swallowed: closed DMs are a legitimate setting and a player
- * who has them off should still be able to play, just less informed.
+ * Only lines carrying both a userId and a throttleKey are throttled; world
+ * news passes straight through.
  */
-async function whisper(item: Announcement): Promise<void> {
-  if (!item.userId) return;
+function throttled(item: Announcement): boolean {
+  if (!item.throttleKey || !item.userId) return false;
 
-  if (item.throttleKey) {
-    const key = `${item.userId}:${item.throttleKey}`;
-    const until = noticeCooldowns.get(key) ?? 0;
-    if (Date.now() < until) return;
-    noticeCooldowns.set(key, Date.now() + config.idlerpg.noticeThrottleMs);
-  }
+  const key = `${item.userId}:${item.throttleKey}`;
+  const until = noticeCooldowns.get(key) ?? 0;
+  if (Date.now() < until) return true;
 
-  try {
-    const user = await client?.users.fetch(item.userId);
-    await user?.send(item.text);
-  } catch (err) {
-    log.debug("Could not DM an Idle RPG notice", { userId: item.userId, err: String(err) });
-  }
-}
-
-/**
- * Resolves the game channel, saying clearly why it could not.
- *
- * The three failure modes are worth separating because they have different
- * fixes and only one of them throws: a wrong id resolves to nothing, a right
- * id pointing at a category or a voice channel resolves to something that
- * cannot be posted to, and a channel the bot cannot see raises. Returning null
- * silently for the first two -- which is what this code used to do -- means a
- * misconfigured realm narrates into the void forever and logs nothing at all,
- * and that is precisely the state a fresh install is most likely to be in.
- */
-async function gameChannel(): Promise<TextChannel | null> {
-  const id = config.idlerpg.channelId;
-  try {
-    const channel = await client?.channels.fetch(id);
-    if (!channel) {
-      log.warn("IDLERPG_CHANNEL_ID does not resolve to a channel", { channelId: id });
-      return null;
-    }
-    if (!channel.isTextBased() || !("send" in channel)) {
-      log.warn("IDLERPG_CHANNEL_ID is not a channel the bot can post to", {
-        channelId: id,
-        type: channel.type,
-      });
-      return null;
-    }
-    return channel as TextChannel;
-  } catch (err) {
-    log.warn("Could not reach the Idle RPG channel", { channelId: id, err: String(err) });
-    return null;
-  }
-}
-
-/**
- * Confirms at boot that the realm has somewhere to talk.
- *
- * Cheap, and it moves the discovery of a bad channel id from "somebody
- * eventually notices the game has been silent for a week" to the first ten
- * lines of the log after a deploy.
- */
-export async function checkChannel(): Promise<void> {
-  if (!config.idlerpg.enabled) return;
-  const channel = await gameChannel();
-  if (channel) {
-    log.info("Idle RPG channel ready", { channel: channel.name, channelId: channel.id });
-  } else {
-    log.error(
-      "Idle RPG has nowhere to post. The game will run and nobody will see it. " +
-        "Check IDLERPG_CHANNEL_ID and that the bot can view and send in that channel.",
-    );
-  }
-}
-
-async function announce(text: string): Promise<void> {
-  const channel = await gameChannel();
-  if (!channel) return;
-  try {
-    await channel.send(text);
-  } catch (err) {
-    log.warn("Could not deliver an Idle RPG announcement", { err: String(err) });
-  }
+  noticeCooldowns.set(key, Date.now() + config.idlerpg.noticeThrottleMs);
+  return false;
 }
 
 /**

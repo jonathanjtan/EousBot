@@ -9,8 +9,13 @@ import type { Character, GameState } from "./types.js";
  * status` at the right moment or your character sat finished for hours. A game
  * built around walking away has to be the thing that tells you to walk back.
  *
+ * Posted in the game channel rather than sent as a DM, and the one message in
+ * either game that mentions the player it is about. A reminder nobody sees is
+ * not a reminder, and this is the single line that asks for something back:
+ * your character is standing in the doorway until you run `/idlerpg claim`.
+ *
  * Pure, so the suite can test the selection logic without a gateway. Delivery
- * is idlerpg/notifywatch.ts.
+ * is rpg/notifywatch.ts.
  */
 
 /**
@@ -30,11 +35,11 @@ export function markNotified(character: Character): void {
   if (character.expedition) character.expedition.notified = true;
 }
 
-/** What the reminder says. */
+/** What the reminder says. The mention is the point of it. */
 export function reminder(character: Character): string {
   const difficulty = character.expedition?.difficulty ?? 0;
   return [
-    `**${character.name}** is back from difficulty ${difficulty}.`,
+    `<@${character.userId}> **${character.name}** is back from difficulty ${difficulty}.`,
     "`/idlerpg claim` to see how it went.",
   ].join("\n");
 }

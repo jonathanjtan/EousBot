@@ -701,9 +701,15 @@ worth more on an altar than at the shop. A test resolves every command the help
 and the README mention against the real command tree, so neither can rot into
 being confidently wrong.
 
-**You get a DM when your adventure finishes.** That is the only timer this game
-owns — everything else is evaluated when somebody runs a command. Reminders are
-the exception because by definition nobody is looking.
+**The game channel pings you when your adventure finishes.** That is the only
+timer this game owns — everything else is evaluated when somebody runs a
+command. Reminders are the exception because by definition nobody is looking,
+and this is the only message either game sends that mentions anybody.
+
+**Neither game sends DMs.** Everything lands in `IDLERPG_CHANNEL_ID`: level-ups,
+item finds, penalties, the lot. Lines about one player name them rather than
+mentioning them, so the realm reads as a place with things happening in it and
+nobody's notifications fill up with a bot narrating their helmet.
 
 Some notes on why things are the way they are:
 

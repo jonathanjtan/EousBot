@@ -89,8 +89,8 @@ test("a clock that runs out levels the player and hands them a new one", () => {
   assert.equal(player.level, 1);
   assert.equal(player.next, rules.timeToLevel(1));
   assert.match(text(out), /attained level 1/);
-  // Levelling always rolls an item, reported to the finder alone.
-  assert.ok(out.some((a) => a.to === "private" && a.userId === "u0"));
+  // Levelling always rolls an item, and the roll is news about that player.
+  assert.ok(out.some((a) => a.userId === "u0"));
 });
 
 test("a paused realm does not move at all", () => {
@@ -146,13 +146,14 @@ test("talking costs time, and costs a veteran far more than a beginner", () => {
   assert.equal(beginner.next, 600 + beginner.penalties.message);
 });
 
-test("the talking penalty is a throttled DM, never a channel line", () => {
+test("the talking penalty is a throttled channel line that never mentions", () => {
   const { state, c } = realmOf(1);
   const out = engine.penalizeMessage(state, "u0", c);
 
   assert.equal(out.length, 1);
-  assert.equal(out[0]!.to, "private");
+  assert.equal(out[0]!.userId, "u0", "the deliverer needs this to throttle it");
   assert.equal(out[0]!.throttleKey, "message-penalty");
+  assert.doesNotMatch(out[0]!.text, /<@/, "it names the player, it does not ping them");
 });
 
 test("talking is billed by message length when the bot can see it", () => {
@@ -212,7 +213,8 @@ test("renaming yourself costs something, but is capped far harder", () => {
   const out = engine.penalizeNick(state, "u0", capped);
 
   assert.equal(state.players.u0!.penalties.nick, 100, "a tenth of the ceiling");
-  assert.equal(out[0]!.to, "private", "a rename is not channel news");
+  assert.equal(out[0]!.userId, "u0", "a rename is one player's news, and throttled as such");
+  assert.equal(out[0]!.throttleKey, "nick-penalty");
 });
 
 test("renaming does not abandon a quest, but talking does", () => {
@@ -668,9 +670,9 @@ test("presence-driven realms tell a player what actually stops their clock", () 
   player.level = 13;
 
   const quiet = text(engine.penalizeMessage(state, "u0", c, 40));
-  assert.ok(!quiet.includes("only runs while you are online"));
+  assert.ok(!quiet.includes("only runs while its owner is online"));
 
   player.penalties.message = 0;
   const told = text(engine.penalizeMessage(state, "u0", { ...c, presenceDriven: true }, 40));
-  assert.match(told, /only runs while you are online/);
+  assert.match(told, /only runs while its owner is online/);
 });

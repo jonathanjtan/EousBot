@@ -79,14 +79,14 @@ export const command: Command = {
 
     if (sub === "sources") {
       const health = feedHealth();
-      const lines = health.sources.map((s) => `• **${s.name}** — <${s.url}>`);
+      const lines = health.sources.map((s) => `• **${s.name}**, <${s.url}>`);
       const when =
         health.lastPollAt === null
           ? "Not polled yet."
           : `Last polled <t:${Math.floor(health.lastPollAt / 1000)}:R>.`;
       const trouble =
         health.consecutiveBlocks > 0
-          ? `\n⚠️ Rate-limited ${health.consecutiveBlocks}× in a row — backing off.`
+          ? `\n⚠️ Rate-limited ${health.consecutiveBlocks}× in a row, backing off.`
           : health.lastError
             ? `\n⚠️ ${health.lastError}`
             : "";
@@ -114,7 +114,7 @@ export const command: Command = {
       }
       const lines = watches.map(
         (w) =>
-          `• **${w.keyword}** — ${w.subscribers.length} subscriber${w.subscribers.length === 1 ? "" : "s"}${w.subscribers.includes(interaction.user.id) ? " (including you)" : ""}`,
+          `• **${w.keyword}**, ${w.subscribers.length} subscriber${w.subscribers.length === 1 ? "" : "s"}${w.subscribers.includes(interaction.user.id) ? " (including you)" : ""}`,
       );
       await interaction.reply({
         content: `${watches.length}/${MAX_WATCHES} keywords:\n${lines.join("\n")}`,
@@ -178,7 +178,7 @@ export const command: Command = {
         `Watching **${keyword}** across ${sources}.`,
         `I'll ping you here when a new post matches, checked every ~${Math.round(config.target.poll.baseMs / 60_000)} min.`,
         "",
-        "_These are community posts, not a stock check — I can't read Target's live stock (it's behind a CAPTCHA) and I don't buy anything._",
+        "_These are community posts, not a stock check. I can't read Target's live stock, which sits behind a CAPTCHA, and I don't buy anything._",
       ].join("\n"),
       flags: MessageFlags.Ephemeral,
     });
@@ -198,7 +198,7 @@ function describeProbe(tcin: string, probe: Awaited<ReturnType<typeof probeListi
   }
 
   if (meta && !meta.parsedBlob) {
-    lines.push("_Product page parsed by fallback — Target changed the page shape._");
+    lines.push("_Product page parsed by fallback. Target changed the page shape._");
   }
 
   if (avail?.challenged) {

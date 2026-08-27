@@ -52,12 +52,12 @@ export function parseDiceNotation(input: string): ParseResult {
     return { ok: false, error: `A die needs at least one side. Try ${EXAMPLE}.` };
   }
   if (count > MAX_DICE) {
-    return { ok: false, error: `That's ${count} dice — I'll roll at most ${MAX_DICE} at once.` };
+    return { ok: false, error: `That's ${count} dice. I'll roll at most ${MAX_DICE} at once.` };
   }
   if (sides > MAX_SIDES) {
     return {
       ok: false,
-      error: `A ${sides}-sided die is too big — the limit is ${MAX_SIDES} sides per die.`,
+      error: `A ${sides}-sided die is too big. The limit is ${MAX_SIDES} sides per die.`,
     };
   }
 

@@ -28,7 +28,7 @@ export const command: Command = {
     if (!isRunning() && !isChatRunning()) {
       await interaction.reply({
         content: claim
-          ? `${describe(claim)} is in a stage that isn't the agent — installing, running gates, or pushing. Those finish on their own shortly.`
+          ? `${describe(claim)} is in a stage that isn't the agent: installing, running gates, or pushing. Those finish on their own shortly.`
           : "Nothing is running.",
         flags: MessageFlags.Ephemeral,
       });
@@ -42,9 +42,9 @@ export const command: Command = {
       stopped
         ? [
             claim ? `Stopped ${describe(claim)}.` : "Stopped the agent.",
-            "Nothing was pushed, so nothing is half-finished — the tokens it had already spent are spent, and the rest are not.",
+            "Nothing was pushed, so nothing is half-finished. The tokens it had already spent are spent, and the rest are not.",
           ].join("\n")
-        : "Tried to interrupt it, but the agent didn't acknowledge. It may have finished on its own — check the build message.",
+        : "Tried to interrupt it, but the agent didn't acknowledge. It may have finished on its own, so check the build message.",
     );
   },
 };

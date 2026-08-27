@@ -39,7 +39,7 @@ export const command: Command = {
 
       const embed = new EmbedBuilder()
         .setColor(0x0e8a16)
-        .setTitle(`#${issue.number} — ${issue.title}`)
+        .setTitle(`#${issue.number}: ${issue.title}`)
         .setURL(issue.url)
         .setDescription(details.length > 400 ? `${details.slice(0, 400)}…` : details)
         .setFooter({ text: `Filed by ${interaction.user.username} · /claude ${issue.number} to start` });
@@ -48,7 +48,7 @@ export const command: Command = {
     } catch (err) {
       log.error("Failed to file request", { err: String(err) });
       await interaction.editReply(
-        "Couldn't file that request — GitHub rejected it. Check the bot's token scopes.",
+        "Couldn't file that request. GitHub rejected it, so check the bot's token scopes.",
       );
     }
   },

@@ -40,7 +40,7 @@ export const command: Command = {
     const at = nextResetAt(readResetMemory());
     const when =
       at === null
-        ? `Nothing is near its limit right now — you'll be pinged the next time a window that's at least ${REMIND_THRESHOLD}% full rolls over.`
+        ? `Nothing is near its limit right now. You'll be pinged the next time a window that's at least ${REMIND_THRESHOLD}% full rolls over.`
         : `Next ping <t:${Math.floor(at / 1000)}:R>, when the fullest window resets.`;
 
     await interaction.editReply(`${when} Run \`/remindme\` again to stop.`);

@@ -58,7 +58,7 @@ export const command: Command = {
     });
     if (!existing.ok) {
       await interaction.reply({
-        content: `${describe(existing.held)} is already running. These go one at a time — try again when it finishes.`,
+        content: `${describe(existing.held)} is already running. These go one at a time, so try again when it finishes.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -80,7 +80,7 @@ export const command: Command = {
     // costs and how long it takes, and the requester picked them a screen ago.
     const overrides = [agentOptions.model, agentOptions.effort].filter(Boolean).join(", ");
     const header =
-      `**Building #${issueNumber}** — ${request.title}` + (overrides ? ` (${overrides})` : "");
+      `**Building #${issueNumber}**: ${request.title}` + (overrides ? ` (${overrides})` : "");
 
     // Progress arrives faster than Discord's edit rate limit tolerates, so
     // coalesce: keep the latest stage and flush on a timer.
@@ -107,7 +107,7 @@ export const command: Command = {
       switch (outcome.kind) {
         case "opened": {
           await interaction.editReply(
-            `**#${issueNumber}** built successfully — review below.`,
+            `**#${issueNumber}** built successfully. Review below.`,
           );
           await interaction.followUp(
             buildApprovalMessage({

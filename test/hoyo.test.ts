@@ -416,7 +416,7 @@ test("eventFields renders the game, the title and a Discord countdown", () => {
 
   assert.equal(field?.name, "ZZZ · Gift From the Clouds");
   const seconds = Math.floor((NOW + HOUR) / 1000);
-  assert.equal(field?.value, `Ends <t:${seconds}:R> — <t:${seconds}:f>`);
+  assert.equal(field?.value, `Ends <t:${seconds}:R>, <t:${seconds}:f>`);
 });
 
 test("eventFields names the gems in each game's own currency, when there are any", () => {

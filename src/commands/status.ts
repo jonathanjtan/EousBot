@@ -39,7 +39,7 @@ export const command: Command = {
 
         const embed = new EmbedBuilder()
           .setColor(req.state === "closed" ? 0x5319e7 : 0x1d76db)
-          .setTitle(`#${req.number} — ${req.title}`)
+          .setTitle(`#${req.number}: ${req.title}`)
           .setURL(req.url)
           .setDescription(req.body.slice(0, 1000) || "_no description_")
           .addFields(
@@ -67,7 +67,7 @@ export const command: Command = {
       // Discord caps embed descriptions at 4096 chars; 25 requests of one line
       // each stays comfortably inside that.
       const lines = requests.map(
-        (r) => `\`#${r.number}\` ${describe(r.status)} — [${r.title}](${r.url})`,
+        (r) => `\`#${r.number}\` ${describe(r.status)}, [${r.title}](${r.url})`,
       );
 
       const embed = new EmbedBuilder()

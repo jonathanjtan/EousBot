@@ -87,9 +87,9 @@ async function resolveTargetPr(
   return {
     error: [
       `There are ${open.length} open pull requests, so I don't know which you mean.`,
-      "Reply to one of my review messages, or name it — e.g. `#" + open[0]?.number + "`.",
+      "Reply to one of my review messages, or name it like `#" + open[0]?.number + "`.",
       "",
-      ...open.map((p) => `• **#${p.number}** — ${p.title}`),
+      ...open.map((p) => `• **#${p.number}**, ${p.title}`),
     ].join("\n"),
   };
 }
@@ -161,7 +161,7 @@ export async function handleMention(message: Message): Promise<void> {
     await message.reply({
       content:
         intent.kind === "approve"
-          ? `I read that as **approve and deploy PR #${target.number}**. Confirm below — approving merges and restarts the bot.`
+          ? `I read that as **approve and deploy PR #${target.number}**. Confirm below. Approving merges it and restarts me.`
           : `I read that as **reject PR #${target.number}**. Confirm below.`,
       ...buildApprovalMessage({
         prNumber: pr.number,
@@ -204,14 +204,14 @@ async function runChat(
 ): Promise<void> {
   if (!config.chat.enabled) {
     await message.reply(
-      "I'm not set up to answer questions — `CHAT_ENABLED` is off. " +
+      "I can't answer questions right now. `CHAT_ENABLED` is off. " +
         "`/claude`, `/revise` and `/status` still work.",
     );
     return;
   }
 
   if (chatting.has(message.author.id)) {
-    await message.reply("Still working on your last one — give me a second.");
+    await message.reply("Still working on your last one. Give me a second.");
     return;
   }
   chatting.add(message.author.id);
@@ -259,7 +259,7 @@ async function runChat(
       await message.reply(
         result.error === "STOPPED"
           ? "Stopped."
-          : `I couldn't answer that — ${result.error.slice(0, 400)}`,
+          : `I couldn't answer that. ${result.error.slice(0, 400)}`,
       );
       return;
     }
@@ -290,7 +290,7 @@ async function runBuild(message: Message, issueNumber: number): Promise<void> {
   const request = await gh.getFeatureRequest(issueNumber);
   if (!request) {
     await message.reply(
-      `No feature request numbered **#${issueNumber}** — that number might be a PR. Check \`/status\`.`,
+      `No feature request numbered **#${issueNumber}**. That number might be a PR. Check \`/status\`.`,
     );
     return;
   }
@@ -307,7 +307,7 @@ async function runBuild(message: Message, issueNumber: number): Promise<void> {
     return;
   }
 
-  const header = `**Building #${issueNumber}** — ${request.title}`;
+  const header = `**Building #${issueNumber}**: ${request.title}`;
   const status = await message.reply(`${header}\n\`Starting…\``);
 
   let latest = "Starting…";
@@ -329,7 +329,7 @@ async function runBuild(message: Message, issueNumber: number): Promise<void> {
 
     switch (outcome.kind) {
       case "opened":
-        await status.edit(`**#${issueNumber}** built successfully — review below.`);
+        await status.edit(`**#${issueNumber}** built successfully. Review below.`);
         await status.reply(
           buildApprovalMessage({
             prNumber: outcome.prNumber,
@@ -384,7 +384,7 @@ async function runRevision(message: Message, prNumber: number, feedback: string)
     return;
   }
 
-  const status = await message.reply(`On it — revising **PR #${prNumber}**…`);
+  const status = await message.reply(`Revising **PR #${prNumber}**…`);
 
   let latest = "Starting…";
   let dirty = false;
@@ -412,7 +412,7 @@ async function runRevision(message: Message, prNumber: number, feedback: string)
         await status.edit(
           `**PR #${outcome.prNumber} revised.** (round ${outcome.round})` +
             (outcome.round >= 3
-              ? `\n_Each round re-reads the whole session, so these get steeper — a rebuild from a sharper request may be cheaper than another round._`
+              ? `\n_Each round re-reads the whole session, so these get steeper. A rebuild from a sharper request may be cheaper than another round._`
               : ""),
         );
         await status.reply(
@@ -462,15 +462,15 @@ function helpEmbed(): EmbedBuilder {
       [
         "Mention me with what you want and I'll work it out:",
         "",
-        "• **“work on #16”** / **“build issue 12”** — I write the code and open a PR",
-        "• **“do X instead”** / **“drop the polling, use a command”** — I revise the PR",
-        "• **“looks good, ship it”** — I'll ask you to confirm, then deploy",
-        "• **“reject that”** — I'll ask you to confirm, then close it",
-        "• **anything else** — “fetch the latest /vt/ threads”, “make these a collage”,",
-        "  “what's the weather in Osaka?”, a photo — I just do it",
+        "• `work on #16` or `build issue 12`. I write the code and open a PR.",
+        "• `do X instead`, `drop the polling, use a command`. I revise the PR.",
+        "• `looks good, ship it`. I'll ask you to confirm, then deploy.",
+        "• `reject that`. I'll ask you to confirm, then close it.",
+        "• Anything else. `fetch the latest /vt/ threads`, `make these a collage`,",
+        "  `what's the weather in Osaka?`, a photo. I just do it.",
         "",
         "**Anything that isn't clearly about a PR is a request I'll act on.** To give",
-        "feedback instead, reply to my review message or name it like `#11` — that's",
+        "feedback instead, reply to my review message or name it like `#11`. That is",
         "what tells me a pull request is involved. Approving and rejecting always",
         "want a button.",
       ].join("\n"),

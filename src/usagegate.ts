@@ -23,8 +23,8 @@ let cached: { snapshot: UsageSnapshot; at: number } | null = null;
 
 function refusal(reason: string): string {
   return [
-    "Requesting changes runs the build agent, which burns the same Claude limits every build shares —",
-    `so for non-admins it's open only while the session and weekly windows are both under ${OPEN_REVISION_CEILING}%.`,
+    "Requesting changes runs the build agent, which burns the same Claude limits every build shares.",
+    `For non-admins it is open only while the session and weekly windows are both under ${OPEN_REVISION_CEILING}%.`,
     `Right now ${reason}.`,
     "Ask an admin to run it, or try again after the window resets.",
   ].join(" ");

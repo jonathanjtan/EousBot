@@ -60,7 +60,7 @@ test("describeListing flags a third-party seller instead of hiding it", () => {
     { ...AVAIL, marketplace: true, sellerName: "CardFlipperLLC" },
     NOW,
   ).join(" | ");
-  assert.match(facts, /third-party seller — CardFlipperLLC/);
+  assert.match(facts, /third-party seller, CardFlipperLLC/);
   assert.doesNotMatch(facts, /sold by Target/);
 });
 

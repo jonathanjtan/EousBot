@@ -276,7 +276,7 @@ export function formatRange(
   currency: string | null,
 ): string | null {
   if (low === null || high === null) return null;
-  return `${formatPrice(low, currency)} – ${formatPrice(high, currency)}`;
+  return `${formatPrice(low, currency)} to ${formatPrice(high, currency)}`;
 }
 
 /** How many points a chart draws before the line stops gaining detail. */

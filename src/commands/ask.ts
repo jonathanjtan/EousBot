@@ -68,7 +68,7 @@ export const command: MessageCommand = {
   async execute(interaction: MessageContextMenuCommandInteraction): Promise<void> {
     if (!config.chat.enabled) {
       await interaction.reply({
-        content: "I'm not set up to answer questions — `CHAT_ENABLED` is off.",
+        content: "I can't answer questions right now. `CHAT_ENABLED` is off.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -80,7 +80,7 @@ export const command: MessageCommand = {
     if (!target.content.trim() && images.length === 0) {
       await interaction.reply({
         content:
-          "There's nothing in that message I can read — no text, and no image I support. " +
+          "There's nothing in that message I can read. No text, and no image I support. " +
           "Embeds and link previews don't come through either.",
         flags: MessageFlags.Ephemeral,
       });
@@ -118,7 +118,7 @@ export async function handleAskModal(
   if (!captured) {
     await interaction.reply({
       content:
-        "I've lost track of which message that was — a restart, or it sat too long. " +
+        "I've lost track of which message that was. A restart, or it sat too long. " +
         "Right-click it again.",
       flags: MessageFlags.Ephemeral,
     });
@@ -141,7 +141,7 @@ export async function handleAskModal(
       await interaction.editReply(
         result.error === "STOPPED"
           ? "Stopped."
-          : `I couldn't answer that — ${result.error.slice(0, 400)}`,
+          : `I couldn't answer that. ${result.error.slice(0, 400)}`,
       );
       return;
     }

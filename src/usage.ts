@@ -79,7 +79,7 @@ const BAR_WIDTH = 20;
 
 /** A text meter, because Discord embeds have no progress bar of their own. */
 export function formatBar(utilization: number | null): string {
-  if (utilization === null) return "`" + "░".repeat(BAR_WIDTH) + "` —";
+  if (utilization === null) return "`" + "░".repeat(BAR_WIDTH) + "` unknown";
   const pct = Math.min(100, Math.max(0, utilization));
   const filled = Math.round((pct / 100) * BAR_WIDTH);
   return "`" + "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled) + `\` ${Math.round(pct)}%`;
@@ -115,11 +115,11 @@ export function usageColour(windows: UsageWindow[]): number {
  */
 export function describePlan(snapshot: UsageSnapshot): string {
   if (!snapshot.rateLimitsAvailable) {
-    return "No plan rate limits apply to this account — the agent bills per token.";
+    return "No plan rate limits apply to this account. The agent bills per token.";
   }
   const plan = snapshot.subscriptionType;
   const named = plan ? `Claude ${plan.charAt(0).toUpperCase()}${plan.slice(1)}` : "Claude";
-  return `${named} — limits shared with everything else this machine runs.`;
+  return `${named}. Limits are shared with everything else this machine runs.`;
 }
 
 /**

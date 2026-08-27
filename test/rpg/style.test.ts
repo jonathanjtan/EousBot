@@ -5,14 +5,12 @@ import { readFileSync } from "node:fs";
 /**
  * The house style, enforced on what the game says out loud.
  *
- * src/unslop.ts is the standard and test/unslop.test.ts already checks that the
- * rules obey themselves. This does the other half: the game's own output, which
- * had 141 em dashes and a help system that explained design decisions to people
- * who wanted to know what to type.
- *
- * Scans source lines rather than rendered output, because most of these strings
- * are templates needing a populated world to render. Comment lines are skipped:
- * they are for whoever maintains this, not for players.
+ * This file used to hold the punctuation, vocabulary and restatement rules for
+ * a list of fourteen game modules. test/voice.test.ts now runs those over every
+ * file in src/, which is a superset, so keeping a second copy here would only
+ * give the two lists somewhere to drift apart. What is left is the part that is
+ * about this game rather than about the bot: a stricter tic scan that reads
+ * comments too, and the manual.
  */
 
 /** Every module that produces text a player will read. */
@@ -34,75 +32,13 @@ const USER_FACING = [
 ];
 
 /**
- * Scoped to files this rewrite authored, deliberately.
- *
- * A first attempt swept the whole bot and corrupted three pieces of
- * pre-existing parsing logic: a constant named `mdash` was redefined to a
- * comma, a regex matching em-dash-delimited scraped HTML was pointed at commas
- * instead, and a character class of valid frame-data characters lost the dash.
- * The suite caught all three. The lesson is not "be careful with regexes", it
- * is that a punctuation rule for prose has no business running over code
- * somebody else wrote, where the same character may be load-bearing.
- */
-
-/** Source lines that are not comments. */
-function speech(path: string): { line: number; text: string }[] {
-  return readFileSync(path, "utf8")
-    .split("\n")
-    .map((text, i) => ({ line: i + 1, text }))
-    .filter(({ text }) => {
-      const t = text.trimStart();
-      return !t.startsWith("*") && !t.startsWith("//") && !t.startsWith("/*");
-    });
-}
-
-const BANNED_CHARACTERS: [string, string][] = [
-  ["—", "em dash"],
-  ["–", "en dash"],
-  ["“", "curly open quote"],
-  ["”", "curly close quote"],
-  ["‘", "curly open apostrophe"],
-  ["’", "curly apostrophe"],
-];
-
-test("nothing the game says uses a banned mark", () => {
-  const offences: string[] = [];
-  for (const path of USER_FACING) {
-    for (const { line, text } of speech(path)) {
-      for (const [char, name] of BANNED_CHARACTERS) {
-        if (text.includes(char)) offences.push(`${path}:${line} ${name}: ${text.trim().slice(0, 70)}`);
-      }
-    }
-  }
-  assert.deepEqual(offences, [], `banned punctuation:\n${offences.join("\n")}`);
-});
-
-test("nothing the game says uses the banned vocabulary", () => {
-  const banned = [
-    "additionally", "crucial", "delve", "enhance", "garner", "intricate",
-    "landscape", "pivotal", "robust", "seamless", "showcase", "testament",
-    "underscore", "vibrant", "leverage", "utilize", "facilitate",
-    "comprehensive", "serves as", "stands as", "boasts",
-  ];
-  const offences: string[] = [];
-  for (const path of USER_FACING) {
-    for (const { line, text } of speech(path)) {
-      for (const word of banned) {
-        if (new RegExp(`\\b${word}\\b`, "i").test(text)) {
-          offences.push(`${path}:${line} "${word}"`);
-        }
-      }
-    }
-  }
-  assert.deepEqual(offences, [], `banned vocabulary:\n${offences.join("\n")}`);
-});
-
-/**
  * Named tics, checked in comments as well as strings.
  *
- * Unlike the punctuation rules, this one scans every line. These words showed
- * up 21 times in comments and 4 times in commit messages before anyone said
- * anything, which is where a tic lives before it reaches a user.
+ * The repo-wide scan stops at the comment line, because forty of these sit in
+ * older modules explaining the design to the next maintainer. These files were
+ * swept, and this keeps them swept. The words showed up 21 times in comments
+ * and 4 times in commit messages before anyone said anything, which is where a
+ * tic lives before it reaches a user.
  */
 test("nothing here flags its own intent instead of stating the thing", () => {
   const tics = ["deliberately", "on purpose", "load-bearing", "quietly", "genuinely", "theatre"];
@@ -120,33 +56,6 @@ test("nothing here flags its own intent instead of stating the thing", () => {
       });
   }
   assert.deepEqual(offences, [], `intent-flagging words:\n${offences.join("\n")}`);
-});
-
-/**
- * Scoped to every module a player reads, not only the manual.
- *
- * It used to read src/rpg/help.ts alone, which is how "The dice are rolled
- * then, not now" survived in a command reply: a second sentence restating the
- * first in the negative, in a file the rule never opened.
- */
-test("nothing the game says restates itself in the negative, or hedges in stacks", () => {
-  const patterns: [RegExp, string][] = [
-    [/not just .{1,40}, but/i, "say the thing you mean"],
-    [/could potentially|it might be argued/i, "stacked hedge"],
-    // "then, not now" and its family: the same fact twice, second time negated.
-    // Narrow to these four adverbs, because a contrast carrying real
-    // information reads the same way ("at parity, not majority") and is fine.
-    [/\b(then|now|here|there), not (then|now|here|there)\b/i, "restated in the negative"],
-  ];
-  const offences: string[] = [];
-  for (const path of USER_FACING) {
-    for (const { line, text } of speech(path)) {
-      for (const [pattern, why] of patterns) {
-        if (pattern.test(text)) offences.push(`${path}:${line} ${why}: ${text.trim().slice(0, 70)}`);
-      }
-    }
-  }
-  assert.deepEqual(offences, [], `restatement:\n${offences.join("\n")}`);
 });
 
 /**

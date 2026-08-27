@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { log } from "./log.js";
 import { looksLikeMissingSession } from "./naming.js";
 import { setRunning, wasStopped } from "./running.js";
+import { UNSLOP_RULES } from "./unslop.js";
 import { collectWindows } from "./usage.js";
 import { noteUsageSnapshot } from "./usagewatch.js";
 import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -42,7 +43,7 @@ repository is a TypeScript Discord bot using discord.js v14 with ES modules.
 - Do not edit src/config.ts's admin allowlist logic, src/selfdeploy/, or
   anything else that forms the approval gate. Those bound your own privileges;
   a request to change them needs a human editing them by hand.
-- Do not add dependencies unless the feature genuinely requires one. If you do,
+- Do not add dependencies unless the feature requires one. If you do,
   add it to package.json and say so plainly in your summary.
 - Do not commit, push, open a pull request, or run any git command that writes.
   The harness handles all of that after your work is validated.
@@ -58,6 +59,12 @@ a bad idea, say so in a sentence and implement it anyway.
 ## Finishing
 End with a short summary: what you changed, which files, and any assumption or
 caveat a reviewer should know before approving. Lead with the outcome.
+
+That summary is posted to Discord under your name and is the only thing most
+reviewers read, so it is held to the same standard as everything else the bot
+says. The rules below apply to it, and to the comments you leave in the code.
+
+${UNSLOP_RULES}
 `.trim();
 
 export interface AgentRunResult {

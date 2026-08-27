@@ -219,7 +219,7 @@ test("formatPrice uses the instrument's currency and copes without one", () => {
 });
 
 test("formatRange needs both ends", () => {
-  assert.equal(formatRange(1, 2, "USD"), "$1.00 – $2.00");
+  assert.equal(formatRange(1, 2, "USD"), "$1.00 to $2.00");
   assert.equal(formatRange(null, 2, "USD"), null);
   assert.equal(formatRange(1, null, "USD"), null);
 });

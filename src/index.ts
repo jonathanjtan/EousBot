@@ -197,10 +197,10 @@ async function reportInterruptedWork(): Promise<void> {
 
   const text = [
     `**A ${what} was interrupted** by a restart and did not finish.`,
-    `Started by ${orphan.startedBy} at ${orphan.at}. Nothing was pushed, so nothing is half-done —`,
+    `Started by ${orphan.startedBy} at ${orphan.at}. Nothing was pushed, so nothing is half-done.`,
     orphan.kind === "build"
-      ? `run \`/claude ${orphan.target}\` again when you're ready.`
-      : `run \`/revise pr:${orphan.target}\` again when you're ready.`,
+      ? `Run \`/claude ${orphan.target}\` again when you're ready.`
+      : `Run \`/revise pr:${orphan.target}\` again when you're ready.`,
   ].join("\n");
 
   try {
@@ -224,13 +224,13 @@ async function announcePendingDeploy(sha: string): Promise<void> {
   const landed = sha.startsWith(pending.expectedSha.slice(0, 8));
   const text = landed
     ? [
-        `**Deployed.** PR #${pending.prNumber} — ${pending.title}`,
+        `**Deployed.** PR #${pending.prNumber}: ${pending.title}`,
         `Approved by ${pending.approvedBy}. Now running \`${sha.slice(0, 8)}\`.`,
       ].join("\n")
     : [
-        `**Restarted, but the commit doesn't match.** PR #${pending.prNumber} — ${pending.title}`,
+        `**Restarted, but the commit doesn't match.** PR #${pending.prNumber}: ${pending.title}`,
         `Expected \`${pending.expectedSha.slice(0, 8)}\`, running \`${sha.slice(0, 8)}\`.`,
-        `Something else moved the checkout — worth a look.`,
+        `Something else moved the checkout. Worth a look.`,
       ].join("\n");
 
   try {
@@ -388,7 +388,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
                 ...(outcome.round >= 3
                   ? [
                       "",
-                      `_Round ${outcome.round} — each round re-reads the whole accumulated session, so these get steeper. If it's still not right, rejecting and rebuilding from a sharper request is often cheaper than another round._`,
+                      `_Round ${outcome.round}. Each round re-reads the whole accumulated session, so these get steeper. If it's still not right, rejecting and rebuilding from a sharper request is often cheaper than another round._`,
                     ]
                   : []),
               ].join("\n"),
@@ -411,7 +411,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           }
           case "no-changes":
             await interaction.editReply(
-              `**PR #${target.prNumber} unchanged** — the agent read the feedback but made no edit.\n\n${outcome.summary.slice(0, 1000)}`,
+              `**PR #${target.prNumber} unchanged.** The agent read the feedback but made no edit.\n\n${outcome.summary.slice(0, 1000)}`,
             );
             break;
           case "failed":

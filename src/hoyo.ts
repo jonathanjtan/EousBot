@@ -461,7 +461,7 @@ export function eventFields(events: HoyoEvent[]): Array<{ name: string; value: s
     const reward = event.gems === null ? "" : `\n${currency} ×${event.gems.toLocaleString("en-US")}`;
     return {
       name: name.length > MAX_NAME ? `${name.slice(0, MAX_NAME - 1)}…` : name,
-      value: `Ends <t:${seconds}:R> — <t:${seconds}:f>${reward}`,
+      value: `Ends <t:${seconds}:R>, <t:${seconds}:f>${reward}`,
     };
   });
 }

@@ -52,7 +52,7 @@ export async function approveAndDeploy(opts: {
     return {
       kind: "failed",
       stage: "precheck",
-      detail: `${describe(busy)} is still running. Deploying now would restart the bot and kill it — try again when it finishes.`,
+      detail: `${describe(busy)} is still running. Deploying now would restart the bot and kill it. Try again when it finishes.`,
     };
   }
 

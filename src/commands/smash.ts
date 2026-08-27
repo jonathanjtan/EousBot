@@ -97,7 +97,7 @@ export const command: Command = {
         .setColor(COLOUR)
         .setTitle(
           index === 0
-            ? `${character.name} — ${label ?? "Frame Data"}`
+            ? `${character.name}: ${label ?? "Frame Data"}`
             : `${character.name} (cont.)`,
         )
         .setURL(pageUrl(character))

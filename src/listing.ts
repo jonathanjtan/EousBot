@@ -24,7 +24,7 @@ export function streetDateNote(meta: ProductMetadata, now: number): string | und
   if (Number.isNaN(at)) return undefined;
 
   const days = Math.round((at - now) / 86_400_000);
-  if (days > 0) return `preorder — releases in ${days} day${days === 1 ? "" : "s"} (${meta.streetDate})`;
+  if (days > 0) return `preorder, releases in ${days} day${days === 1 ? "" : "s"} (${meta.streetDate})`;
   if (days === 0) return `releases today (${meta.streetDate})`;
   return undefined;
 }
@@ -43,7 +43,7 @@ export function describeListing(
   if (avail.marketplace === true || (meta.relationshipTypeCode && meta.relationshipTypeCode !== "SA")) {
     // Called out rather than filtered: a third-party listing is exactly the
     // case where the price matters, so it belongs in front of you, not hidden.
-    lines.push(`⚠️ third-party seller${avail.sellerName ? ` — ${avail.sellerName}` : ""}`);
+    lines.push(`⚠️ third-party seller${avail.sellerName ? `, ${avail.sellerName}` : ""}`);
   } else if (meta.relationshipTypeCode === "SA" || avail.marketplace === false) {
     lines.push("sold by Target");
   }

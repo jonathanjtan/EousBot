@@ -137,7 +137,7 @@ export function formatDrop(watch: FeedWatch, entry: FeedEntry, source: FeedSourc
     ...links.map((l) => l),
     entry.link,
     "",
-    "_Community post, not a stock check — verify before you sprint._",
+    "_Community post, not a stock check. Verify before you sprint._",
   ]
     .filter(Boolean)
     .join("\n");

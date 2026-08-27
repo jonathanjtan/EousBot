@@ -64,7 +64,7 @@ test("formatBar clamps values outside 0-100 rather than mangling the bar", () =>
 });
 
 test("formatBar renders an unknown utilization as empty with no percentage", () => {
-  assert.equal(formatBar(null), "`" + "░".repeat(20) + "` —");
+  assert.equal(formatBar(null), "`" + "░".repeat(20) + "` unknown");
 });
 
 test("formatWindow renders the reset as a Discord relative timestamp", () => {

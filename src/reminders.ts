@@ -103,7 +103,7 @@ export function formatReminder(events: ResetEvent[], subscribers: string[]): str
   const which = events
     .map(
       (e) =>
-        `• **${e.label}** — was at ${e.previousUtilization === null ? "an unknown level" : `${Math.round(e.previousUtilization)}%`}, now reset`,
+        `• **${e.label}**, was at ${e.previousUtilization === null ? "an unknown level" : `${Math.round(e.previousUtilization)}%`}, now reset`,
     )
     .join("\n");
   const mentions = subscribers.map((id) => `<@${id}>`).join(" ");

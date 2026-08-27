@@ -221,8 +221,8 @@ const ENTITIES: Record<string, string> = {
   quot: '"',
   apos: "'",
   nbsp: " ",
-  mdash: "—",
-  ndash: "–",
+  mdash: "\u2014",
+  ndash: "\u2013",
 };
 
 /** Markup to plain text: tags dropped, entities decoded, whitespace collapsed. */
@@ -272,7 +272,7 @@ export function parseFrameData(character: Character, html: string): FrameData {
       // The stats box in Misc Info is a move container by markup only: it has
       // no columns, just one "Weight — 98" line per div. Lift those out.
       if (/^\s*[^>]*\bmisc\b/.test(chunk)) {
-        for (const line of chunk.matchAll(/<div(?: class="oos\d+")?>([^<]*—[^<]*)<\/div>/g)) {
+        for (const line of chunk.matchAll(/<div(?: class="oos\d+")?>([^<]*\u2014[^<]*)<\/div>/g)) {
           const value = text(line[1] ?? "");
           if (value.length > 0) stats.push(value);
         }
@@ -333,7 +333,7 @@ interface Column {
 }
 
 /** What a frame count looks like: digits, and the separators the site uses. */
-const FRAMES = /^[\d\s./\-–—]+$/;
+const FRAMES = /^[\d\s./\-\u2013\u2014]+$/;
 
 const COLUMNS: Column[] = [
   { heading: "Start", of: (move) => move.startup },

@@ -817,6 +817,25 @@ set costs one read per boot rather than a write.
 `npm run deploy-commands` still exists as an escape hatch: it force-pushes the
 schema without waiting for a restart.
 
+### House style
+
+Everything the bot says is held to one standard, and `src/unslop.ts` is it: no
+em dashes, no curly quotes, no AI vocabulary, one idea per sentence, an opinion
+where there is one.
+
+It reaches the two kinds of output by different routes. Model-written prose
+gets the rules in the system prompt, so `src/chat.ts` and `src/agent.ts` both
+interpolate `UNSLOP_RULES` and `test/voice.test.ts` fails if a third `query()`
+appears without them. Hand-written strings get a scan instead:
+`test/voice.test.ts` reads every file under `src/` and reports the file, line
+and text of anything that breaks the rules, so a reply added later cannot walk
+the style back one em dash at a time.
+
+Where a banned character is data rather than speech, spell it as an escape.
+`src/smash.ts` parses a wiki that delimits stat lines with a real em dash and
+writes it `\u2014`, which keeps the scraper working and says which of the two
+it is.
+
 ## Operating
 
 ```bash
@@ -853,7 +872,7 @@ src/
   agent.ts        Claude Agent SDK wrapper and its system prompt
   chat.ts         Claude Code in a scratch workspace, reachable from Discord
   commands/ask.ts "Ask EousBot" on a right-clicked message
-  unslop.ts       house style, injected into the chat system prompt
+  unslop.ts       house style, in both system prompts and enforced on src/
   intent.ts       reading intent from a mention (no imports, so tests are cheap)
   mention.ts      the @mention entry point: chat, build, revise, approve
   pipeline.ts     worktree → agent → typecheck → test → PR

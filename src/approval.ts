@@ -84,7 +84,7 @@ export function buildApprovalMessage(opts: {
 }) {
   const embed = new EmbedBuilder()
     .setColor(0x1d76db)
-    .setTitle(`PR #${opts.prNumber} — ${opts.title}`)
+    .setTitle(`PR #${opts.prNumber}: ${opts.title}`)
     .setURL(opts.prUrl)
     .setDescription(
       opts.summary.length > 1800 ? `${opts.summary.slice(0, 1800)}…` : opts.summary || "_no summary_",
@@ -203,7 +203,7 @@ export function buildAskModal(interactionId: string, aboutAuthor: string): Modal
           .setCustomId(QUESTION_INPUT_ID)
           .setLabel("What do you want to know?")
           .setStyle(TextInputStyle.Paragraph)
-          .setPlaceholder("e.g. what breed is this? — or leave blank and I'll just describe it")
+          .setPlaceholder("what breed is this? Leave it blank and I'll just describe the message")
           // Optional: pointing at a photo and saying nothing is a complete
           // request on its own, and the agent is told what to do with it.
           .setRequired(false)

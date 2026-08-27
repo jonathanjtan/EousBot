@@ -13,8 +13,8 @@ export const LENNY = "( ͡° ͜ʖ ͡°)";
 
 /**
  * A selection of the faces listed on https://www.lennyfac.es/, with the
- * canonical Lenny first. Not exhaustive — the site runs to hundreds — just
- * enough variety that `/lenny random` rarely repeats itself.
+ * canonical Lenny first. The site runs to hundreds; this is enough variety
+ * that `/lenny random` rarely repeats itself.
  */
 export const FACES = [
   LENNY,
@@ -47,8 +47,8 @@ export function pickFace(random: () => number = Math.random): Face {
 }
 
 /**
- * Some faces are built from characters Discord reads as markdown — the shrug's
- * underscores would italicise the arms clean off — so escape them before the
+ * Some faces are built from characters Discord reads as markdown. The shrug's
+ * underscores would italicise the arms clean off, so escape them before the
  * reply goes out.
  */
 export function formatFace(face: string): string {

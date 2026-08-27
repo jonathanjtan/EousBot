@@ -9,7 +9,9 @@ import { test } from "node:test";
  * no batching does not look wrong, it simply never arrives.
  */
 
-const { batch, itemList, leaderboard, questLine } = await import("../../src/idlerpg/format.ts");
+const { batch, itemList, labelled, leaderboard, questLine } = await import(
+  "../../src/idlerpg/format.ts"
+);
 const rules = await import("../../src/idlerpg/rules.ts");
 const engine = await import("../../src/idlerpg/engine.ts");
 
@@ -66,6 +68,34 @@ test("a single over-long line is truncated rather than dropped", () => {
 test("batching nothing produces nothing", () => {
   assert.deepEqual(batch([], 100), []);
   assert.deepEqual(batch(["", ""], 100), []);
+});
+
+/**
+ * Two games post into one channel, so every message says which one it is.
+ *
+ * The second chunk is the case worth a test. Stamping only the first would
+ * leave a long tick's overflow looking like it came from the other game, which
+ * is the exact confusion the tag was added to end.
+ */
+test("every labelled chunk carries the tag, not just the first", () => {
+  const chunks = labelled("[tag]", ["aaa", "bbb", "ccc", "ddd"], 13);
+  assert.equal(chunks.length, 2);
+  for (const chunk of chunks) {
+    assert.ok(chunk.startsWith("[tag]\n"), `unstamped chunk: ${chunk}`);
+    assert.ok(chunk.length <= 13, `chunk over the limit: ${chunk.length}`);
+  }
+  assert.deepEqual(chunks, ["[tag]\naaa\nbbb", "[tag]\nccc\nddd"]);
+});
+
+test("a labelled message still fits what Discord will take", () => {
+  const lines = Array.from({ length: 200 }, (_, i) => "x".repeat((i % 40) + 1));
+  for (const chunk of labelled("[#G7 Idle RPG]", lines, 1_900)) {
+    assert.ok(chunk.length <= 1_900, `a ${chunk.length}-char message would be rejected`);
+  }
+});
+
+test("nothing to say is not stamped with a tag", () => {
+  assert.deepEqual(labelled("[tag]", [], 100), []);
 });
 
 test("an empty realm's leaderboard points at how to join it", () => {

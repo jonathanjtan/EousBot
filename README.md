@@ -711,6 +711,21 @@ item finds, penalties, the lot. Lines about one player name them rather than
 mentioning them, so the realm reads as a place with things happening in it and
 nobody's notifications fill up with a bot narrating their helmet.
 
+**Both games post to that one channel, so each stamps what it says.** A
+level-up line reads the same whichever game produced it, and the tag on the
+first line is what tells them apart:
+
+```
+[idlerpg.xyz]           the IRC original, /old-idlerpg
+[#G7 Idle RPG]          the game people play, /idlerpg
+```
+
+They live in `src/gamechannel.ts` as the only two values `announce()` accepts,
+so a third thing that wants to talk in there has to say which game it is rather
+than inventing a third tag. Change the strings there if your server wants
+different ones. A tick long enough to split across two messages carries the tag
+on both, which is the case it exists for.
+
 Some notes on why things are the way they are:
 
 - **Gods** exist so an item you cannot wear has a second use besides the shop.

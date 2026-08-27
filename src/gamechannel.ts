@@ -1,8 +1,8 @@
 import type { Client, TextChannel } from "discord.js";
 import { config } from "./config.js";
-// A pure function over strings. It lives in the idle game's formatter because
-// that game needed it first; both games post through here now.
-import { batch } from "./idlerpg/format.js";
+// Pure functions over strings. They live in the idle game's formatter because
+// that game needed them first; both games post through here now.
+import { labelled } from "./idlerpg/format.js";
 import { log } from "./log.js";
 
 /**
@@ -20,6 +20,20 @@ import { log } from "./log.js";
 
 /** Discord rejects a message over 2000 characters outright; this leaves room. */
 const MESSAGE_LIMIT = 1_900;
+
+/**
+ * What each game stamps on the front of what it posts.
+ *
+ * One channel, two games, and a level-up line that reads the same either way.
+ * The museum piece keeps a hostname, which is how the IRC original announced
+ * itself; the game people play gets the server's own name.
+ *
+ * The type is the union of the two rather than string, so a third caller has
+ * to say which game it is instead of inventing a third tag.
+ */
+export const IRC_GAME = "[idlerpg.xyz]";
+export const DISPATCH_GAME = "[#G7 Idle RPG]";
+export type GameLabel = typeof IRC_GAME | typeof DISPATCH_GAME;
 
 /**
  * Resolves the game channel, saying clearly why it could not.
@@ -61,12 +75,16 @@ export async function gameChannel(client: Client | null): Promise<TextChannel | 
  * a character as told only once the channel has actually seen it, so a Discord
  * hiccup costs a minute rather than the reminder itself.
  */
-export async function announce(client: Client | null, lines: string[]): Promise<boolean> {
+export async function announce(
+  client: Client | null,
+  label: GameLabel,
+  lines: string[],
+): Promise<boolean> {
   if (lines.length === 0) return true;
   const channel = await gameChannel(client);
   if (!channel) return false;
 
-  for (const chunk of batch(lines, MESSAGE_LIMIT)) {
+  for (const chunk of labelled(label, lines, MESSAGE_LIMIT)) {
     try {
       await channel.send(chunk);
     } catch (err) {

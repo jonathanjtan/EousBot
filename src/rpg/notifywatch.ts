@@ -1,5 +1,5 @@
 import type { Client } from "discord.js";
-import { announce } from "../gamechannel.js";
+import { DISPATCH_GAME, announce } from "../gamechannel.js";
 import { log } from "../log.js";
 import { markNotified, pendingClaims, reminder } from "./notify.js";
 import { save, world } from "./store.js";
@@ -49,7 +49,7 @@ async function sweep(): Promise<void> {
     // One post for the whole sweep. A minute's worth of adventures finishing
     // together is normal on a busy realm, and a message each would be four
     // pings in a row where one message carrying four mentions does the job.
-    const posted = await announce(client, due.map(reminder));
+    const posted = await announce(client, DISPATCH_GAME, due.map(reminder));
     if (!posted) {
       log.warn("Could not post claim reminders; will try again", { count: due.length });
       return;

@@ -1,6 +1,6 @@
 import { GatewayIntentBits, type Client, type Guild } from "discord.js";
 import { config } from "../config.js";
-import { announce } from "../gamechannel.js";
+import { IRC_GAME, announce } from "../gamechannel.js";
 import { log } from "../log.js";
 import { setPresence, tick, type EngineContext } from "./engine.js";
 import { flush, touch, world } from "./store.js";
@@ -120,7 +120,7 @@ async function run(): Promise<void> {
 export async function deliver(announcements: Announcement[]): Promise<void> {
   if (announcements.length === 0 || !client) return;
   const lines = announcements.filter((item) => !throttled(item)).map((item) => item.text);
-  await announce(client, lines);
+  await announce(client, IRC_GAME, lines);
 }
 
 /**

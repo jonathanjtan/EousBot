@@ -63,6 +63,29 @@ test("neither game has a way to DM anybody", () => {
   assert.deepEqual(offences, [], `a DM path came back:\n${offences.join("\n")}`);
 });
 
+/**
+ * Which game said it.
+ *
+ * Both narrate into IDLERPG_CHANNEL_ID, and the lines read alike: a level-up,
+ * an item find, a name. The tag is the only thing separating them, so every
+ * call has to pick one. Checked at the source, because announce() reaches
+ * Discord and the tags live behind a config import the suite does not boot.
+ */
+test("every announcement says which game it came from", () => {
+  const callers = ["src/idlerpg/watch.ts", "src/rpg/notifywatch.ts"];
+  const untagged: string[] = [];
+
+  for (const path of callers) {
+    for (const { line, text } of code(path)) {
+      if (!/\bannounce\s*\(/.test(text)) continue;
+      if (!/announce\(\s*client,\s*(IRC_GAME|DISPATCH_GAME)\b/.test(text)) {
+        untagged.push(`${path}:${line} ${text.trim().slice(0, 70)}`);
+      }
+    }
+  }
+  assert.deepEqual(untagged, [], `an untagged announcement:\n${untagged.join("\n")}`);
+});
+
 test("the idle game never mentions a player", async () => {
   const engine = await import("../src/idlerpg/engine.ts");
   const rules = await import("../src/idlerpg/rules.ts");

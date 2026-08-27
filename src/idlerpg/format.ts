@@ -167,3 +167,19 @@ export function batch(lines: string[], limit: number): string[] {
   if (current) out.push(current);
   return out;
 }
+
+/**
+ * The same lines, stamped with the game that produced them.
+ *
+ * Both games narrate into one channel, and "Grimwald has attained level 12"
+ * reads the same whichever of them said it. The tag is what tells them apart.
+ *
+ * Every chunk carries it, not only the first: a tick long enough to split in
+ * two would otherwise leave the second message unattributed, which is the case
+ * the tag exists for. The limit shrinks by the header so a stamped chunk still
+ * fits what Discord will take.
+ */
+export function labelled(label: string, lines: string[], limit: number): string[] {
+  const header = `${label}\n`;
+  return batch(lines, limit - header.length).map((chunk) => `${header}${chunk}`);
+}

@@ -25,14 +25,14 @@ const MESSAGE_LIMIT = 1_900;
  * What each game stamps on the front of what it posts.
  *
  * One channel, two games, and a level-up line that reads the same either way.
- * The museum piece keeps a hostname, which is how the IRC original announced
- * itself; the game people play gets the server's own name.
+ * #G7 is the original's name, so the port that keeps its rules keeps that too.
+ * The Discord game, which owes it nothing but the idea, gets the domain.
  *
  * The type is the union of the two rather than string, so a third caller has
  * to say which game it is instead of inventing a third tag.
  */
-export const IRC_GAME = "[idlerpg.xyz]";
-export const DISPATCH_GAME = "[#G7 Idle RPG]";
+export const IRC_GAME = "[#G7 Idle RPG]";
+export const DISPATCH_GAME = "[idlerpg.xyz]";
 export type GameLabel = typeof IRC_GAME | typeof DISPATCH_GAME;
 
 /**

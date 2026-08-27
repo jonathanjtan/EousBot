@@ -716,8 +716,8 @@ level-up line reads the same whichever game produced it, and the tag on the
 first line is what tells them apart:
 
 ```
-[idlerpg.xyz]           the IRC original, /old-idlerpg
-[#G7 Idle RPG]          the game people play, /idlerpg
+[#G7 Idle RPG]          the IRC original, /old-idlerpg
+[idlerpg.xyz]           the game people play, /idlerpg
 ```
 
 They live in `src/gamechannel.ts` as the only two values `announce()` accepts,

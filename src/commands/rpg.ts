@@ -746,8 +746,6 @@ async function doAdventure(interaction: Interaction): Promise<void> {
       // One rendering of the time. <t:...:R> already reads as "in 1 hour",
       // so pairing it with a duration printed the same fact twice.
       `Difficulty ${result.difficulty}, back <t:${Math.floor(result.endsAt / 1000)}:R>.`,
-      "",
-      "_`/idlerpg claim` when time's up._",
     ].join("\n"),
   );
 }

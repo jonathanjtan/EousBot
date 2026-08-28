@@ -64,12 +64,15 @@ import {
 } from "./flavor.js";
 import {
   SLOT_NAMES,
+  WORLD_EVENTS,
   type Alignment,
   type Announcement,
+  type EventRecord,
   type GameState,
   type ItemSlot,
   type Player,
   type Tuning,
+  type WorldEvent,
 } from "./types.js";
 
 /**
@@ -105,6 +108,13 @@ export interface EngineContext {
   presenceDriven?: boolean;
 }
 
+/** A tally with every event kind present and nothing having happened yet. */
+export function emptyEvents(): Record<WorldEvent, EventRecord> {
+  const events = {} as Record<WorldEvent, EventRecord>;
+  for (const kind of WORLD_EVENTS) events[kind] = { count: 0, lastAt: 0 };
+  return events;
+}
+
 export function newWorld(now: number): GameState {
   return {
     players: {},
@@ -113,6 +123,7 @@ export function newWorld(now: number): GameState {
     elapsed: 0,
     lastTick: Math.floor(now / 1000),
     paused: false,
+    events: emptyEvents(),
   };
 }
 
@@ -606,6 +617,28 @@ function teamBattle(state: GameState, ctx: EngineContext): Announcement[] {
 // ------------------------------------------------------------------- events ---
 
 /**
+ * How many players each event scales with.
+ *
+ * The tick rolls against these and the events report reads them, so the two
+ * cannot disagree about why an event is rare -- two of them count only half
+ * the realm, and being told a rate that assumed the whole of it would be worse
+ * than being told nothing.
+ */
+export function eventPopulations(state: GameState): Record<WorldEvent, number> {
+  const online = onlinePlayers(state);
+  const evil = online.filter((p) => p.alignment === "evil").length;
+  const good = online.filter((p) => p.alignment === "good").length;
+  return {
+    handOfGod: online.length,
+    teamBattle: online.length,
+    calamity: online.length,
+    godsend: online.length,
+    evilness: evil,
+    goodness: good,
+  };
+}
+
+/**
  * The hand of God: a large, arbitrary shove, merciful four times in five.
  *
  * Exported because an admin can summon it; the realm is not told which of the
@@ -1054,27 +1087,30 @@ export function tick(state: GameState, seconds: number, ctx: EngineContext): Ann
 
   state.elapsed += seconds;
 
-  const evil = online.filter((p) => p.alignment === "evil").length;
-  const good = online.filter((p) => p.alignment === "good").length;
+  const population = eventPopulations(state);
 
-  if (eventFires(ctx.rng, EVENT_DAYS.handOfGod, online.length, seconds)) {
-    out.push(...handOfGod(state, ctx));
-  }
-  if (eventFires(ctx.rng, EVENT_DAYS.teamBattle, online.length, seconds)) {
-    out.push(...teamBattle(state, ctx));
-  }
-  if (eventFires(ctx.rng, EVENT_DAYS.calamity, online.length, seconds)) {
-    out.push(...calamity(state, ctx));
-  }
-  if (eventFires(ctx.rng, EVENT_DAYS.godsend, online.length, seconds)) {
-    out.push(...godsend(state, ctx));
-  }
-  if (eventFires(ctx.rng, EVENT_DAYS.evilness, evil, seconds)) {
-    out.push(...evilness(state, ctx));
-  }
-  if (eventFires(ctx.rng, EVENT_DAYS.goodness, good, seconds)) {
-    out.push(...goodness(state, ctx));
-  }
+  // Rolled and recorded in one place. The events are meant to be rare -- the
+  // hand of God is one per online player per twenty days -- and from the
+  // channel a rare event and a dead one look exactly alike, so the tally is
+  // the only thing that can tell an operator which they are watching.
+  const fire = (kind: WorldEvent, population: number, run: () => Announcement[]): void => {
+    if (!eventFires(ctx.rng, EVENT_DAYS[kind], population, seconds)) return;
+    const lines = run();
+    // A roll that produced nothing did not happen: a team battle needs six
+    // online players and declines below that without saying so, and counting
+    // it would report an event nobody in the channel ever saw.
+    if (lines.length === 0) return;
+    state.events[kind].count += 1;
+    state.events[kind].lastAt = Math.floor(ctx.now / 1000);
+    out.push(...lines);
+  };
+
+  fire("handOfGod", population.handOfGod, () => handOfGod(state, ctx));
+  fire("teamBattle", population.teamBattle, () => teamBattle(state, ctx));
+  fire("calamity", population.calamity, () => calamity(state, ctx));
+  fire("godsend", population.godsend, () => godsend(state, ctx));
+  fire("evilness", population.evilness, () => evilness(state, ctx));
+  fire("goodness", population.goodness, () => goodness(state, ctx));
 
   // The map advances one square per second of game time, as it does in the
   // original. Bounded by the caller's catch-up cap.

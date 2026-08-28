@@ -472,8 +472,15 @@ produced the split is in that section.
 /old-idlerpg quest                        who is questing, and how far they have got
 /old-idlerpg map                          a PNG of where everyone is standing
 /old-idlerpg help
-/old-idlerpg admin panel|hog|pause|resume|adjust|delete    (admins only)
+/old-idlerpg admin panel|hog|events|pause|resume|adjust|delete    (admins only)
 ```
+
+`/old-idlerpg admin events` answers "has the hand of God ever actually fired".
+Every world event is rare by design (one hand of God per online player per
+twenty days, so a realm of four sees six a month), which means a quiet
+fortnight and a broken event look identical from the channel. The report gives
+each event's count, when it last fired and how often to expect it at the
+current population.
 
 `/old-idlerpg admin panel` posts a pinnable message with an **Enter the realm**
 button. That is the intended way in: one click and a two-field form, rather

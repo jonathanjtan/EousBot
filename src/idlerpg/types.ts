@@ -149,6 +149,30 @@ export type QuestState =
       p2: Point;
     };
 
+/**
+ * The world events the tick rolls for, in the order it rolls them.
+ *
+ * Named as a list rather than left implicit in EVENT_DAYS so the tally below
+ * has a key type and so a new event cannot be added without deciding what its
+ * record looks like.
+ */
+export const WORLD_EVENTS = [
+  "handOfGod",
+  "teamBattle",
+  "calamity",
+  "godsend",
+  "evilness",
+  "goodness",
+] as const;
+
+export type WorldEvent = (typeof WORLD_EVENTS)[number];
+
+/** How often one world event has actually happened. `lastAt` is epoch seconds. */
+export interface EventRecord {
+  count: number;
+  lastAt: number;
+}
+
 export interface GameState {
   /** Keyed by Discord user id. */
   players: Record<string, Player>;
@@ -162,6 +186,14 @@ export interface GameState {
   /** Epoch seconds of the last processed tick. */
   lastTick: number;
   paused: boolean;
+  /**
+   * What the world has actually done, per event kind.
+   *
+   * Kept because the events are rare by design -- the hand of God is one per
+   * online player per twenty days -- and a rare event and a broken one look
+   * identical from the channel. This is the difference between them.
+   */
+  events: Record<WorldEvent, EventRecord>;
 }
 
 /**

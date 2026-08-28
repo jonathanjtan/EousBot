@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { log } from "../log.js";
 import { newWorld } from "./engine.js";
 import { emptyItems } from "./rules.js";
-import { ITEM_SLOTS, type GameState, type Player } from "./types.js";
+import { ITEM_SLOTS, WORLD_EVENTS, type GameState, type Player } from "./types.js";
 
 /**
  * The realm, on disk.
@@ -61,12 +61,25 @@ function hydrate(raw: Partial<GameState>, now: number): GameState {
     };
   }
 
+  // A realm saved before the tally existed starts counting from zero rather
+  // than claiming its events never fired -- see eventReport, which says so.
+  const events = fresh.events;
+  for (const kind of WORLD_EVENTS) {
+    const saved = raw.events?.[kind];
+    if (!saved) continue;
+    events[kind] = {
+      count: typeof saved.count === "number" ? saved.count : 0,
+      lastAt: typeof saved.lastAt === "number" ? saved.lastAt : 0,
+    };
+  }
+
   return {
     players,
     quest: raw.quest ?? fresh.quest,
     elapsed: raw.elapsed ?? 0,
     lastTick: raw.lastTick ?? fresh.lastTick,
     paused: raw.paused ?? false,
+    events,
   };
 }
 

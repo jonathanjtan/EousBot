@@ -9,7 +9,7 @@ import { test } from "node:test";
  * no batching does not look wrong, it simply never arrives.
  */
 
-const { batch, itemList, labelled, leaderboard, questLine } = await import(
+const { batch, eventReport, itemList, labelled, leaderboard, questLine } = await import(
   "../../src/idlerpg/format.ts"
 );
 const rules = await import("../../src/idlerpg/rules.ts");
@@ -181,4 +181,35 @@ test("a quester who has left the realm does not break the quest line", () => {
   };
   assert.doesNotThrow(() => questLine(state, START));
   assert.match(questLine(state, START), /someone/);
+});
+
+test("the events report gives an untriggered event a rate to be judged against", () => {
+  const state = realmOf(4);
+  const report = eventReport(state, START);
+
+  // Four online, one hand of God per player per twenty days, so five days.
+  assert.match(report, /`hand of God` never fired\. Expected one every 5 days, 00:00:00 at 4 online/);
+  assert.match(report, /4 online/);
+});
+
+test("the events report counts what the tick recorded", () => {
+  const state = realmOf(4);
+  state.events.handOfGod = { count: 3, lastAt: Math.floor(START / 1000) - 7_200 };
+
+  assert.match(eventReport(state, START), /fired 3, last 0 days, 02:00:00 ago/);
+});
+
+test("an event nobody qualifies for says so instead of quoting a rate", () => {
+  const state = realmOf(2);
+  const report = eventReport(state, START);
+
+  // Everybody registers neutral, so neither alignment event can ever roll.
+  assert.match(report, /Nobody is evil and online, so it cannot fire/);
+  assert.match(report, /Nobody is good and online, so it cannot fire/);
+});
+
+test("a frozen realm says the rolls are held, not that the events are broken", () => {
+  const state = realmOf(2);
+  state.paused = true;
+  assert.match(eventReport(state, START), /frozen/);
 });

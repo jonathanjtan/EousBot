@@ -1,11 +1,21 @@
 import { EmbedBuilder } from "discord.js";
-import { DEFAULT_TUNING, duration, itemSum, timeToLevel } from "./rules.js";
+import { eventPopulations } from "./engine.js";
+import {
+  DEFAULT_TUNING,
+  EVENT_DAYS,
+  duration,
+  expectedInterval,
+  itemSum,
+  timeToLevel,
+} from "./rules.js";
 import {
   ITEM_SLOTS,
   SLOT_NAMES,
+  WORLD_EVENTS,
   type GameState,
   type Player,
   type Tuning,
+  type WorldEvent,
 } from "./types.js";
 
 /**
@@ -139,6 +149,67 @@ export function questLine(state: GameState, now: number): string {
     `${names(quest.questers)} are on a quest to ${quest.text}.`,
     `Heading for waypoint ${quest.stage} at [${target.x}, ${target.y}].`,
     ...distances.map((d) => `• ${d}`),
+  ].join("\n");
+}
+
+const EVENT_NAMES: Record<WorldEvent, string> = {
+  handOfGod: "hand of God",
+  teamBattle: "team battle",
+  calamity: "calamity",
+  godsend: "godsend",
+  evilness: "evilness",
+  goodness: "goodness",
+};
+
+/** What each event's rate is counted per, for the "at N" clause. */
+const EVENT_SCALE: Record<WorldEvent, string> = {
+  handOfGod: "online",
+  teamBattle: "online",
+  calamity: "online",
+  godsend: "online",
+  evilness: "evil and online",
+  goodness: "good and online",
+};
+
+/**
+ * Every world event, how often it has fired and how often it should.
+ *
+ * The question this answers is "is the hand of God broken", and the answer is
+ * almost always no: at one occurrence per online player per twenty days, a
+ * realm of three goes a week between them, and a week of silence is exactly
+ * what a dead event looks like too. Printing the expected interval next to the
+ * observed count is the only way to tell those apart without reading the code.
+ */
+export function eventReport(state: GameState, now: number): string {
+  const nowSeconds = Math.floor(now / 1000);
+  const population = eventPopulations(state);
+  const online = Object.values(state.players).filter((p) => p.online).length;
+
+  const rows = WORLD_EVENTS.map((kind) => {
+    const record = state.events[kind];
+    const every = expectedInterval(EVENT_DAYS[kind], population[kind]);
+    const rate = Number.isFinite(every)
+      ? `Expected one every ${duration(every)} at ${population[kind]} ${EVENT_SCALE[kind]}`
+      : `Nobody is ${EVENT_SCALE[kind]}, so it cannot fire`;
+    const seen =
+      record.count === 0
+        ? "never fired"
+        : `fired ${record.count}, last ${duration(nowSeconds - record.lastAt)} ago`;
+    return `\`${EVENT_NAMES[kind].padEnd(11)}\` ${seen}. ${rate}.`;
+  });
+
+  const clock = state.paused
+    ? "The realm is frozen, so nothing rolls."
+    : `The realm is running. Last tick ${duration(nowSeconds - state.lastTick)} ago.`;
+
+  return [
+    `**Idle RPG world events**, ${online} online`,
+    clock,
+    "",
+    ...rows,
+    "",
+    "Counted from the tick only, so a summoned hand of God is not in here. " +
+      "A realm that was saved before this tally existed starts from zero.",
   ].join("\n");
 }
 

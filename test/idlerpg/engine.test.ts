@@ -676,3 +676,34 @@ test("presence-driven realms tell a player what actually stops their clock", () 
   const told = text(engine.penalizeMessage(state, "u0", { ...c, presenceDriven: true }, 40));
   assert.match(told, /only runs while its owner is online/);
 });
+
+/**
+ * The question issue #60 asked: is the hand of God working at all?
+ *
+ * It is, and this is the number that says so. Four online players at one
+ * occurrence per player per twenty days is six a month, which is quiet enough
+ * that a fortnight of silence proves nothing -- hence the tally, and hence the
+ * band rather than an equality.
+ */
+test("the hand of God fires at its designed rate and the realm records it", () => {
+  const { state, c } = realmOf(4);
+  const ticks = 30 * 8_640; // Thirty days at the default ten-second tick.
+  let lines = 0;
+
+  for (let i = 1; i <= ticks; i += 1) {
+    const out = engine.tick(state, 10, { ...c, now: START + i * 10_000 });
+    lines += out.filter((a) => /removed from|added to/.test(a.text)).length;
+  }
+
+  const fired = state.events.handOfGod.count;
+  assert.ok(fired >= 2 && fired <= 12, `six expected in a month, saw ${fired}`);
+  assert.ok(lines > 0, "the realm should have heard about them");
+  assert.ok(
+    state.events.handOfGod.lastAt >= Math.floor(START / 1000),
+    "the last one should be stamped",
+  );
+
+  // Four players is short of the six a team battle needs, so every roll it
+  // wins still says nothing. Counting those would report battles nobody saw.
+  assert.equal(state.events.teamBattle.count, 0);
+});

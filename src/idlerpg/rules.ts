@@ -6,6 +6,7 @@ import {
   type ItemSlot,
   type Player,
   type Tuning,
+  type WorldEvent,
 } from "./types.js";
 
 /**
@@ -396,7 +397,19 @@ export const EVENT_DAYS = {
   evilness: 8,
   /** Per online *good* player. */
   goodness: 12,
-} as const;
+} as const satisfies Record<WorldEvent, number>;
+
+/**
+ * How long an event of this kind takes to come round, on average, at this
+ * population. Seconds; Infinity when nobody it applies to is online.
+ *
+ * The inverse of eventFires, and the number that answers "is this thing
+ * broken or is it just rare".
+ */
+export function expectedInterval(days: number, population: number): number {
+  if (population <= 0) return Infinity;
+  return (days * 86_400) / population;
+}
 
 /**
  * Whether a population-scaled event fires this tick.

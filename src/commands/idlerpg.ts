@@ -19,7 +19,7 @@ import {
   register,
   setAlignment,
 } from "../idlerpg/engine.js";
-import { characterSheet, itemList, leaderboard, questLine } from "../idlerpg/format.js";
+import { characterSheet, eventReport, itemList, leaderboard, questLine } from "../idlerpg/format.js";
 import { renderMap } from "../idlerpg/map.js";
 import { duration } from "../idlerpg/rules.js";
 import { touch } from "../idlerpg/store.js";
@@ -270,6 +270,11 @@ export const command: Command = {
         )
         .addSubcommand((s) =>
           s
+            .setName("events")
+            .setDescription("What the world's events have done, and how often they should"),
+        )
+        .addSubcommand((s) =>
+          s
             .setName("panel")
             .setDescription("Post a pinnable join panel with a button"),
         )
@@ -463,6 +468,16 @@ async function runAdmin(interaction: Interaction, sub: string): Promise<void> {
 
   if (sub === "panel") {
     await interaction.reply(buildJoinPanel());
+    return;
+  }
+
+  if (sub === "events") {
+    // Ephemeral: it is a diagnostic, and posting it in the game channel would
+    // tell the realm how long it has to wait for its next miracle.
+    await interaction.reply({
+      content: eventReport(state, Date.now()),
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 

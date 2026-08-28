@@ -194,6 +194,15 @@ export interface GameState {
    * identical from the channel. This is the difference between them.
    */
   events: Record<WorldEvent, EventRecord>;
+  /**
+   * Epoch seconds the temporary hand of God rate runs until, or undefined
+   * before the first tick that sets it. See HOG_BOOST_DAYS.
+   *
+   * Stamped by the tick rather than written as a fixed date because the two
+   * days have to start when the build reaches the realm, and how long a pull
+   * request waits for approval is not something the code can know.
+   */
+  hogBoostUntil?: number;
 }
 
 /**

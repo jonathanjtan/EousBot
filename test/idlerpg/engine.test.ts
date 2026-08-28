@@ -687,6 +687,8 @@ test("presence-driven realms tell a player what actually stops their clock", () 
  */
 test("the hand of God fires at its designed rate and the realm records it", () => {
   const { state, c } = realmOf(4);
+  // Past the temporary rate of HOG_BOOST_DAYS, so this measures the game's own.
+  state.hogBoostUntil = Math.floor(START / 1000);
   const ticks = 30 * 8_640; // Thirty days at the default ten-second tick.
   let lines = 0;
 
@@ -706,4 +708,28 @@ test("the hand of God fires at its designed rate and the realm records it", () =
   // Four players is short of the six a team battle needs, so every roll it
   // wins still says nothing. Counting those would report battles nobody saw.
   assert.equal(state.events.teamBattle.count, 0);
+});
+
+/**
+ * The two-day check asked for on the pull request.
+ *
+ * Nineteen times the rate is four a day at four players, which is enough to
+ * see from the channel in an evening. The test that matters is the second
+ * half: the window has to close on its own, because nothing else will close
+ * it.
+ */
+test("the temporary rate raises the hand of God, then expires by itself", () => {
+  const { state, c } = realmOf(4);
+
+  for (let i = 1; i <= 2 * 8_640; i += 1) {
+    engine.tick(state, 10, { ...c, now: START + i * 10_000 });
+  }
+
+  const fired = state.events.handOfGod.count;
+  assert.ok(fired >= 3, `about eight expected over two boosted days, saw ${fired}`);
+
+  // The window is stamped from the first tick, not from START.
+  const after = (state.hogBoostUntil! + 1) * 1_000;
+  assert.equal(engine.eventDays(state, after).handOfGod, rules.EVENT_DAYS.handOfGod);
+  assert.equal(engine.eventDays(state, START).handOfGod, rules.HOG_BOOST_DAYS);
 });

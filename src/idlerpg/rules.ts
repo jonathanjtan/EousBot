@@ -400,6 +400,20 @@ export const EVENT_DAYS = {
 } as const satisfies Record<WorldEvent, number>;
 
 /**
+ * A temporary hand of God rate, and the window it applies for.
+ *
+ * Nineteen occurrences per online player per twenty days instead of one, for
+ * the realm's first two days under this build. The point is to confirm from
+ * the channel that the event fires at all, which at the normal rate takes a
+ * fortnight of watching and still proves nothing.
+ *
+ * Meant to be taken out again. Removing it is three deletions: these two
+ * constants, `hogBoostUntil` in types.ts, and the branch in `eventDays`.
+ */
+export const HOG_BOOST_DAYS = 20 / 19;
+export const HOG_BOOST_SECONDS = 2 * 86_400;
+
+/**
  * How long an event of this kind takes to come round, on average, at this
  * population. Seconds; Infinity when nobody it applies to is online.
  *

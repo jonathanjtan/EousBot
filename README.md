@@ -482,6 +482,13 @@ fortnight and a broken event look identical from the channel. The report gives
 each event's count, when it last fired and how often to expect it at the
 current population.
 
+**Temporary:** the hand of God runs at 19 times its normal rate for the realm's
+first two days under the build that introduced this, so the check can be done
+from the channel in an evening rather than over a fortnight. The window is
+stamped on the first tick after deploy and closes by itself; the events report
+says how long is left. Taking it out is three deletions, listed above
+`HOG_BOOST_DAYS` in `src/idlerpg/rules.ts`.
+
 `/old-idlerpg admin panel` posts a pinnable message with an **Enter the realm**
 button. That is the intended way in: one click and a two-field form, rather
 than asking everyone to discover a slash command with a required argument.

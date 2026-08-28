@@ -7,6 +7,8 @@ import {
   HIGH_LEVEL_CHALLENGE_INTERVAL,
   HIGH_LEVEL_QUORUM,
   HIGH_LEVEL_THRESHOLD,
+  HOG_BOOST_DAYS,
+  HOG_BOOST_SECONDS,
   HOG_MERCY_ODDS,
   NICK_PENALTY_DIVISOR,
   PENALTY_BASE,
@@ -639,6 +641,19 @@ export function eventPopulations(state: GameState): Record<WorldEvent, number> {
 }
 
 /**
+ * How often each event is meant to come round, in days per occurrence.
+ *
+ * EVENT_DAYS verbatim except for the hand of God while the two-day check of
+ * issue #60 is running. The tick rolls against these and the events report
+ * quotes them, so the channel and the report cannot disagree about the rate.
+ */
+export function eventDays(state: GameState, now: number): Record<WorldEvent, number> {
+  const boosted =
+    state.hogBoostUntil !== undefined && Math.floor(now / 1000) < state.hogBoostUntil;
+  return { ...EVENT_DAYS, handOfGod: boosted ? HOG_BOOST_DAYS : EVENT_DAYS.handOfGod };
+}
+
+/**
  * The hand of God: a large, arbitrary shove, merciful four times in five.
  *
  * Exported because an admin can summon it; the realm is not told which of the
@@ -1087,14 +1102,20 @@ export function tick(state: GameState, seconds: number, ctx: EngineContext): Ann
 
   state.elapsed += seconds;
 
+  // Opened here rather than at the top of the tick so the two days are two
+  // days of a realm with somebody in it: a window that expired over a quiet
+  // weekend would have checked nothing.
+  state.hogBoostUntil ??= Math.floor(ctx.now / 1000) + HOG_BOOST_SECONDS;
+
   const population = eventPopulations(state);
+  const days = eventDays(state, ctx.now);
 
   // Rolled and recorded in one place. The events are meant to be rare -- the
   // hand of God is one per online player per twenty days -- and from the
   // channel a rare event and a dead one look exactly alike, so the tally is
   // the only thing that can tell an operator which they are watching.
   const fire = (kind: WorldEvent, population: number, run: () => Announcement[]): void => {
-    if (!eventFires(ctx.rng, EVENT_DAYS[kind], population, seconds)) return;
+    if (!eventFires(ctx.rng, days[kind], population, seconds)) return;
     const lines = run();
     // A roll that produced nothing did not happen: a team battle needs six
     // online players and declines below that without saying so, and counting

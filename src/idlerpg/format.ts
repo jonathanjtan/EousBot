@@ -1,8 +1,7 @@
 import { EmbedBuilder } from "discord.js";
-import { eventPopulations } from "./engine.js";
+import { eventDays, eventPopulations } from "./engine.js";
 import {
   DEFAULT_TUNING,
-  EVENT_DAYS,
   duration,
   expectedInterval,
   itemSum,
@@ -183,11 +182,12 @@ const EVENT_SCALE: Record<WorldEvent, string> = {
 export function eventReport(state: GameState, now: number): string {
   const nowSeconds = Math.floor(now / 1000);
   const population = eventPopulations(state);
+  const days = eventDays(state, now);
   const online = Object.values(state.players).filter((p) => p.online).length;
 
   const rows = WORLD_EVENTS.map((kind) => {
     const record = state.events[kind];
-    const every = expectedInterval(EVENT_DAYS[kind], population[kind]);
+    const every = expectedInterval(days[kind], population[kind]);
     const rate = Number.isFinite(every)
       ? `Expected one every ${duration(every)} at ${population[kind]} ${EVENT_SCALE[kind]}`
       : `Nobody is ${EVENT_SCALE[kind]}, so it cannot fire`;
@@ -202,9 +202,19 @@ export function eventReport(state: GameState, now: number): string {
     ? "The realm is frozen, so nothing rolls."
     : `The realm is running. Last tick ${duration(nowSeconds - state.lastTick)} ago.`;
 
+  // The temporary rate says so where the rate is read, or the next admin to
+  // look would take the boosted number for the game's own.
+  const boostEnds = state.hogBoostUntil ?? 0;
+  const boost =
+    boostEnds > nowSeconds
+      ? `The hand of God is turned up 19x for the next ${duration(boostEnds - nowSeconds)}, ` +
+        "to check it fires at all. It returns to one per player per twenty days by itself."
+      : "";
+
   return [
     `**Idle RPG world events**, ${online} online`,
     clock,
+    ...(boost ? [boost] : []),
     "",
     ...rows,
     "",

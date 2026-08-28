@@ -80,6 +80,9 @@ function hydrate(raw: Partial<GameState>, now: number): GameState {
     lastTick: raw.lastTick ?? fresh.lastTick,
     paused: raw.paused ?? false,
     events,
+    // Carried, or the bot's own redeploys would restart the two-day window
+    // every time and the boosted rate would never end.
+    hogBoostUntil: typeof raw.hogBoostUntil === "number" ? raw.hogBoostUntil : undefined,
   };
 }
 

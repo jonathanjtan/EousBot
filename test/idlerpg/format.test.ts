@@ -213,3 +213,15 @@ test("a frozen realm says the rolls are held, not that the events are broken", (
   state.paused = true;
   assert.match(eventReport(state, START), /frozen/);
 });
+
+test("the report says when the hand of God is running at the temporary rate", () => {
+  const state = realmOf(4);
+  state.hogBoostUntil = Math.floor(START / 1000) + 3_600;
+
+  const report = eventReport(state, START);
+  assert.match(report, /turned up 19x for the next 0 days, 01:00:00/);
+  assert.match(report, /`hand of God` never fired\. Expected one every 0 days, 06:18:56/);
+
+  state.hogBoostUntil = Math.floor(START / 1000);
+  assert.doesNotMatch(eventReport(state, START), /turned up/);
+});

@@ -10,6 +10,7 @@ import { acquire, describe, release } from "../inflight.js";
 import { getFeatureRequest } from "../github.js";
 import { log } from "../log.js";
 import { buildFeature } from "../pipeline.js";
+import { startProgress } from "../progress.js";
 import type { AgentOptions } from "../agentopts.js";
 import type { Command } from "./types.js";
 
@@ -82,34 +83,24 @@ export const command: Command = {
     const header =
       `**Building #${issueNumber}**: ${request.title}` + (overrides ? ` (${overrides})` : "");
 
-    // Progress arrives faster than Discord's edit rate limit tolerates, so
-    // coalesce: keep the latest stage and flush on a timer.
-    let latest = "Starting…";
-    let dirty = false;
-    const flush = setInterval(() => {
-      if (!dirty) return;
-      dirty = false;
-      interaction.editReply(`${header}\n\`${latest}\``).catch(() => undefined);
-    }, 4000);
+    const progress = await startProgress(interaction, header);
+    progress.update("Starting…");
 
     try {
       const outcome = await buildFeature(
         request,
         (stage, detail) => {
-          latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
-          dirty = true;
+          progress.update(
+            detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage,
+          );
         },
         agentOptions,
       );
 
-      clearInterval(flush);
-
       switch (outcome.kind) {
         case "opened": {
-          await interaction.editReply(
-            `**#${issueNumber}** built successfully. Review below.`,
-          );
-          await interaction.followUp(
+          await progress.finish(`**#${issueNumber}** built successfully. Review below.`);
+          await progress.followUp(
             buildApprovalMessage({
               prNumber: outcome.prNumber,
               prUrl: outcome.prUrl,
@@ -124,12 +115,12 @@ export const command: Command = {
           break;
         }
         case "no-changes":
-          await interaction.editReply(
+          await progress.finish(
             `**#${issueNumber}**: the agent finished but changed nothing. Its notes are on the issue.`,
           );
           break;
         case "failed":
-          await interaction.editReply(
+          await progress.finish(
             [
               `**#${issueNumber}** failed at \`${outcome.stage}\`. No pull request was opened.`,
               "```",
@@ -140,13 +131,12 @@ export const command: Command = {
           break;
       }
     } catch (err) {
-      clearInterval(flush);
       log.error("Build threw", { issue: issueNumber, err: String(err) });
-      await interaction
-        .editReply(`**#${issueNumber}** crashed the build pipeline:\n\`\`\`\n${String(err).slice(0, 1500)}\n\`\`\``)
-        .catch(() => undefined);
+      await progress.finish(
+        `**#${issueNumber}** crashed the build pipeline:\n\`\`\`\n${String(err).slice(0, 1500)}\n\`\`\``,
+      );
     } finally {
-      clearInterval(flush);
+      progress.stop();
       release();
     }
   },

@@ -533,6 +533,15 @@ test("no clock ever goes negative, however brutal the tick", () => {
  * The head start is not a shortcut: quests need level-40 players, so a run that
  * begins at level 0 spends most of its budget on a ramp that tells us nothing
  * about the thing being measured.
+ *
+ * Know what a run costs before asking for one. `tick` walks the map one second
+ * of game time at a time whatever step it is handed, so a run is O(days x pop)
+ * regardless of STEP -- 5 to 10 ms per simulated player-day, rising with
+ * population. Twenty-five days at twenty players is the four seconds the
+ * quest-pacing test below spends. A year at thirty is minutes, and a sweep of
+ * three populations by three seeds runs past the ten-minute cap on a single
+ * command: long enough to cost a build its whole turn budget waiting on one.
+ * Measure over the shortest run that shows the effect.
  */
 function simulate(pop: number, days: number, seed: number, startLevel = 0) {
   const { state, c } = realmOf(pop, seed);
@@ -580,14 +589,26 @@ test("a long run leaves every character in a sane state", () => {
  *
  * This is upstream's behaviour, not a defect, and it is pinned here so that any
  * future change to the quest system has to be deliberate about it.
+ *
+ * Measured on the realm's mean level rather than its best player. A maximum
+ * over the population is an estimator biased by population: twenty characters
+ * draw four times as many lucky godsends as five do, and the large realm wins
+ * on sample size alone. At the original event rates that bias was small enough
+ * to lose to the effect being measured; at EVENT_RATE_MULTIPLIER it swamps it,
+ * and the top-player comparison holds on 2 seeds in 12. The mean holds on all
+ * of them, and on every seed tried at a multiplier of 1.
  */
 test("a small realm levels faster than a large one, because quests do not scale", () => {
-  const best = (pop: number) =>
-    engine.topPlayers(simulate(pop, 25, 5, rules.QUEST_MIN_LEVEL), 1)[0]!.level;
+  const meanLevel = (pop: number) => {
+    const levels = Object.values(simulate(pop, 25, 5, rules.QUEST_MIN_LEVEL).players).map(
+      (p) => p.level,
+    );
+    return levels.reduce((sum, level) => sum + level, 0) / levels.length;
+  };
 
-  const small = best(5);
-  const large = best(20);
-  assert.ok(small > large, `small realm reached ${small}, large reached ${large}`);
+  const small = meanLevel(5);
+  const large = meanLevel(20);
+  assert.ok(small > large, `small realm averaged ${small}, large averaged ${large}`);
 });
 
 test("the leaderboard sorts by level, then by who is closest to the next one", () => {

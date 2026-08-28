@@ -16,11 +16,12 @@ import {
  * and the engine stays a state machine over functions that can be reasoned
  * about one at a time.
  *
- * The constants are jotun's, from irpg.pl 3.1.2. They are not arbitrary and
- * they are not independent -- rpStep in particular is the entire pacing of the
- * game, and moving it changes how long a character takes to reach level 60
- * from years to an afternoon. Tuning exists so a server can make that choice
- * knowingly; the defaults are the ones idlerpg.net has run since 2004.
+ * The constants are jotun's, from irpg.pl 3.1.2, bar EVENT_RATE_MULTIPLIER.
+ * They are not arbitrary and they are not independent -- rpStep in particular
+ * is the entire pacing of the game, and moving it changes how long a character
+ * takes to reach level 60 from years to an afternoon. Tuning exists so a server
+ * can make that choice knowingly; the defaults are the ones idlerpg.net has run
+ * since 2004.
  */
 
 /** Randomness, injected so a tick can be replayed exactly in a test. */
@@ -381,28 +382,48 @@ export function anySlot(rng: Rng): ItemSlot {
 }
 
 /**
+ * How much faster than upstream the world's set pieces fire.
+ *
+ * The one departure from jotun's numbers in this file. IRC channels ran this
+ * for hundreds of people, where one godsend per player per four days still puts
+ * something in the channel every hour. A Discord realm of six sees a hand of
+ * God about twice a month, which is not often enough for anyone to notice the
+ * game is running. Twenty-four moves each event's per-player interval from a
+ * footing in days to one in hours.
+ *
+ * Set it to 1 to play at the original rates.
+ */
+export const EVENT_RATE_MULTIPLIER = 24;
+
+/**
  * How often the world's set pieces fire, expressed as one occurrence per this
  * many days per online player.
  *
  * Scaling by population is the reason a busy realm feels eventful and a dead
- * one goes quiet instead of pelting its last two players with miracles.
+ * one goes quiet instead of pelting its last two players with miracles. The
+ * numerators are jotun's; the divisor is ours.
  */
 export const EVENT_DAYS = {
-  handOfGod: 20,
-  teamBattle: 24,
-  calamity: 8,
-  godsend: 4,
+  handOfGod: 20 / EVENT_RATE_MULTIPLIER,
+  teamBattle: 24 / EVENT_RATE_MULTIPLIER,
+  calamity: 8 / EVENT_RATE_MULTIPLIER,
+  godsend: 4 / EVENT_RATE_MULTIPLIER,
   /** Per online *evil* player, not per player. */
-  evilness: 8,
+  evilness: 8 / EVENT_RATE_MULTIPLIER,
   /** Per online *good* player. */
-  goodness: 12,
+  goodness: 12 / EVENT_RATE_MULTIPLIER,
 } as const;
 
 /**
  * Whether a population-scaled event fires this tick.
  *
  * `days` occurrences per player per that many days, sampled once per tick of
- * `tickSeconds`, so the rate is independent of how often the bot ticks.
+ * `tickSeconds`, so the rate is independent of how often the bot ticks -- until
+ * an event comes due more than once in one tick, which a single draw cannot
+ * express. That needs `population * tickSeconds` to reach `days * 86400`: on
+ * the ten-second tick, upwards of a thousand players. The 600-second catch-up
+ * tick after an outage is the case that can get there, at around two dozen
+ * players for the fastest event, and it only ever under-fires.
  */
 export function eventFires(
   rng: Rng,

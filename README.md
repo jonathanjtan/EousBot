@@ -493,6 +493,14 @@ both quest types, the 500×500 map and its collision fights. The event text and
 the unique items' names are this port's own — see `src/idlerpg/flavor.ts`,
 which is the file to edit if you want the realm to sound like your server.
 
+One number is not jotun's. Events fire 24 times as often as they do upstream:
+`EVENT_RATE_MULTIPLIER` in `src/idlerpg/rules.ts`. The original rates are one
+godsend per player per four days and one hand of God per twenty. Those suit the
+channel of hundreds the game was written for; in a Discord realm of six they
+mean a hand of God about twice a month. Twenty-four moves each event's
+per-player interval from a footing in days to one in hours. Set it to 1 to play
+at the 2004 rates; everything derived from it follows.
+
 ### It costs nothing to run
 
 Worth stating plainly, because the rest of this bot is expensive and this part

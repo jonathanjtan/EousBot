@@ -1078,6 +1078,12 @@ export function tick(state: GameState, seconds: number, ctx: EngineContext): Ann
 
   // The map advances one square per second of game time, as it does in the
   // original. Bounded by the caller's catch-up cap.
+  //
+  // Live, that cap holds this to IDLERPG_MAX_CATCHUP_S iterations at worst --
+  // 600 by default -- and one per tick the rest of the time. Simulations are
+  // what pay: the loop costs the game time a run covers rather than the number
+  // of ticks it takes to get there, so a bigger step buys nothing. See the note
+  // on `simulate` in the engine tests before reaching for a long run.
   for (let i = 0; i < seconds; i += 1) {
     out.push(...stepMap(state, ctx));
   }

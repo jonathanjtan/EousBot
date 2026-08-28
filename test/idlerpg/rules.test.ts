@@ -217,6 +217,48 @@ test("nothing happens to an empty realm", () => {
   assert.equal(rules.eventFires(() => 0, 4, 0, 10), false);
 });
 
+/**
+ * The one rate in the game that is ours rather than jotun's, pinned so that
+ * changing it is a decision somebody makes rather than a number that drifts.
+ */
+test("events fire 24 times as often as irpg 3.1.2", () => {
+  const upstream = {
+    handOfGod: 20,
+    teamBattle: 24,
+    calamity: 8,
+    godsend: 4,
+    evilness: 8,
+    goodness: 12,
+  };
+
+  assert.equal(rules.EVENT_RATE_MULTIPLIER, 24);
+  for (const [event, days] of Object.entries(upstream)) {
+    assert.equal(
+      rules.EVENT_DAYS[event as keyof typeof rules.EVENT_DAYS],
+      days / 24,
+      `${event} should fire 24x as often as upstream's one per ${days} days`,
+    );
+  }
+  assert.deepEqual(Object.keys(rules.EVENT_DAYS).sort(), Object.keys(upstream).sort());
+});
+
+/**
+ * eventFires is a single Bernoulli draw, so a rate that comes due more than
+ * once in a tick is clipped to once. The realm has to be enormous to get there
+ * on the ten-second tick; the 600-second catch-up tick after an outage is the
+ * case with any slack at all, and it errs towards too few events.
+ */
+test("the fastest event needs an implausible realm to saturate a tick", () => {
+  const fastest = Math.min(...Object.values(rules.EVENT_DAYS));
+  const certain = (population: number, tick: number) =>
+    rules.eventFires(() => 0.999999, fastest, population, tick);
+
+  assert.equal(certain(6, 10), false, "a realm of six does not saturate the normal tick");
+  assert.equal(certain(1_000, 10), false, "nor does a realm of a thousand");
+  assert.equal(certain(2_000, 10), true, "two thousand players would");
+  assert.equal(certain(6, 600), false, "a realm of six survives a full catch-up tick");
+});
+
 test("shuffle keeps every element exactly once", () => {
   const rng = seeded(5);
   const original = [1, 2, 3, 4, 5, 6, 7, 8];

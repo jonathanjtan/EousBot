@@ -62,6 +62,7 @@ import {
 import { startClaimReminders } from "./rpg/notifywatch.js";
 import { handleMention } from "./mention.js";
 import { revisePullRequest } from "./pipeline.js";
+import { startProgress } from "./progress.js";
 import { syncGuildCommands } from "./register.js";
 import { startFeedWatch } from "./feedwatch.js";
 import { approveAndDeploy, rejectPullRequest } from "./selfdeploy.js";
@@ -355,15 +356,8 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       // closeApprovalButtons handles.
       await closeApprovalButtons(interaction.message, interaction.user.username);
 
-      let latest = "Starting…";
-      let dirty = false;
-      const flush = setInterval(() => {
-        if (!dirty) return;
-        dirty = false;
-        interaction
-          .editReply(`**Revising PR #${target.prNumber}**\n\`${latest}\``)
-          .catch(() => undefined);
-      }, 4000);
+      const progress = await startProgress(interaction, `**Revising PR #${target.prNumber}**`);
+      progress.update("Starting…");
 
       try {
         const outcome = await revisePullRequest(
@@ -373,15 +367,15 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             requestedBy: interaction.user.username,
           },
           (stage, detail) => {
-            latest = detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage;
-            dirty = true;
+            progress.update(
+              detail ? `${stage}: ${detail.replace(/\s+/g, " ").slice(0, 120)}` : stage,
+            );
           },
         );
-        clearInterval(flush);
 
         switch (outcome.kind) {
           case "revised": {
-            await interaction.editReply(
+            await progress.finish(
               [
                 `**PR #${outcome.prNumber} revised.** (round ${outcome.round})`,
                 `> ${feedback.split("\n")[0]?.slice(0, 200)}`,
@@ -395,7 +389,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             );
             // A fresh approval prompt, so the revision gets the same gate the
             // original did rather than inheriting its approval.
-            await interaction.followUp(
+            await progress.followUp(
               buildApprovalMessage({
                 prNumber: outcome.prNumber,
                 prUrl: outcome.prUrl,
@@ -410,12 +404,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             break;
           }
           case "no-changes":
-            await interaction.editReply(
+            await progress.finish(
               `**PR #${target.prNumber} unchanged.** The agent read the feedback but made no edit.\n\n${outcome.summary.slice(0, 1000)}`,
             );
             break;
           case "failed":
-            await interaction.editReply(
+            await progress.finish(
               [
                 `**Revision failed** at \`${outcome.stage}\`. PR #${target.prNumber} is untouched and still reviewable.`,
                 "```",
@@ -426,13 +420,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             break;
         }
       } catch (err) {
-        clearInterval(flush);
         log.error("Revision threw", { pr: target.prNumber, err: String(err) });
-        await interaction
-          .editReply(`Revision crashed:\n\`\`\`\n${String(err).slice(0, 1400)}\n\`\`\``)
-          .catch(() => undefined);
+        await progress.finish(
+          `Revision crashed:\n\`\`\`\n${String(err).slice(0, 1400)}\n\`\`\``,
+        );
       } finally {
-        clearInterval(flush);
+        progress.stop();
         release();
       }
       return;

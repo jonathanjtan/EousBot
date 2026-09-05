@@ -19,6 +19,9 @@ import type {
  * Fetching the reply once turns it into an ordinary Message, which the bot can
  * edit for as long as it exists. The follow-up goes to the channel for the same
  * reason: `interaction.followUp` is the same expiring webhook.
+ *
+ * The first write is the exception, and has to go through the webhook: it is
+ * the only thing that clears the LOADING flag behind "<bot> is thinking...".
  */
 export interface Progress {
   /** Latest progress line. Call as fast as it changes; sending is coalesced. */
@@ -47,8 +50,32 @@ export async function startProgress(
     return null;
   });
 
-  const edit = (content: string): Promise<unknown> =>
-    reply ? reply.edit(content) : interaction.editReply(content);
+  // The deferred reply carries Discord's LOADING flag, which the client draws as
+  // "<bot> is thinking...". Only the interaction webhook clears that flag. A
+  // bot-token edit goes to PATCH /channels/:id/messages/:id, which rewrites the
+  // content and stamps "(edited)" but leaves the flag set -- so every line below
+  // lands on a message still showing the placeholder, and a perfectly healthy
+  // run reads as hung from its first second to its last. Spend the token on the
+  // first write to clear it, then switch to the Message, which never expires.
+  let loadingCleared = false;
+  const edit = async (content: string): Promise<unknown> => {
+    if (!loadingCleared) {
+      try {
+        const first = await interaction.editReply(content);
+        loadingCleared = true;
+        return first;
+      } catch (err) {
+        // Past the fifteen-minute deadline the flag can no longer be cleared.
+        // A stuck placeholder beats losing the text underneath it.
+        if (!reply) throw err;
+        loadingCleared = true;
+        log.warn("Could not clear the thinking placeholder; editing the message instead", {
+          err: String(err),
+        });
+      }
+    }
+    return reply ? reply.edit(content) : interaction.editReply(content);
+  };
 
   let latest: string | null = null;
   let warned = false;

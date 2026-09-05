@@ -11,9 +11,19 @@ import { test } from "node:test";
  * including the failure a game whose list won't load produces.
  */
 
-const { GAMES, gameFor, identifyGame, normaliseCode, parseCodeList, redeemUrl } = await import(
-  "../src/redeem.ts"
-);
+const {
+  GAMES,
+  activeCodesFor,
+  codeLines,
+  gameFor,
+  gamesFor,
+  identifyGame,
+  normaliseCode,
+  parseCodeEntries,
+  parseCodeList,
+  redeemUrl,
+  tidyRewards,
+} = await import("../src/redeem.ts");
 const { GAME_CHOICES } = await import("../src/hoyo.ts");
 
 const genshin = GAMES[0]!;
@@ -55,6 +65,12 @@ test("gameFor takes the option values and nothing else", () => {
   assert.equal(gameFor(null), null);
 });
 
+test("gamesFor gives one game or all three", () => {
+  assert.deepEqual(gamesFor("zzz"), [zzz]);
+  assert.deepEqual(gamesFor(null), GAMES);
+  assert.deepEqual(gamesFor("starrail"), GAMES);
+});
+
 test("normaliseCode accepts a code however it was pasted", () => {
   assert.equal(normaliseCode("GENSHINGIFT"), "GENSHINGIFT");
   assert.equal(normaliseCode("  2bj64qrz7rt8 "), "2BJ64QRZ7RT8");
@@ -85,6 +101,86 @@ test("parseCodeList reads the published shape and survives anything else", () =>
   assert.deepEqual(parseCodeList({ detail: "Field required" }), []);
   assert.deepEqual(parseCodeList(null), []);
   assert.deepEqual(parseCodeList("nonsense"), []);
+});
+
+test("parseCodeEntries keeps the rewards and drops what isn't redeemable", () => {
+  const payload = {
+    codes: [
+      { id: 790, code: "BALLETCOLLAB", status: "OK", game: "genshin", rewards: "Primogem*30" },
+      { id: 776, code: " 2bj64qrz7rt8 ", status: "OK", game: "genshin" },
+      { id: 777, code: "EXPIRED", status: "NOT_ACTIVE", game: "genshin", rewards: "Mora*1" },
+      { id: 1, status: "OK", game: "genshin" },
+      null,
+    ],
+  };
+  assert.deepEqual(parseCodeEntries(payload), [
+    { code: "BALLETCOLLAB", rewards: "Primogem*30" },
+    { code: "2BJ64QRZ7RT8", rewards: null },
+  ]);
+
+  assert.deepEqual(parseCodeEntries(null), []);
+});
+
+test("tidyRewards reads both shapes the list publishes", () => {
+  assert.equal(
+    tidyRewards("Primogem*30;Mora*10000;Hero's Wit*3"),
+    "Primogem x30, Mora x10000, Hero's Wit x3",
+  );
+  const prose = "60 primogems and five adventurer's experience";
+  assert.equal(tidyRewards(prose), prose);
+  assert.equal(tidyRewards("Polychrome*50000000", 12), "Polychrome…");
+});
+
+test("codeLines links every code and says what it pays", () => {
+  const rendered = codeLines(
+    zzz,
+    [
+      { code: "ZZZMEIJI", rewards: "Polychrome*50" },
+      { code: "ZZZ2YEAR", rewards: null },
+    ],
+    1024,
+  );
+  assert.deepEqual(rendered.split("\n"), [
+    "[`ZZZMEIJI`](https://zenless.hoyoverse.com/redemption?code=ZZZMEIJI) · Polychrome x50",
+    "[`ZZZ2YEAR`](https://zenless.hoyoverse.com/redemption?code=ZZZ2YEAR)",
+  ]);
+});
+
+test("codeLines drops the tail rather than overrunning the budget", () => {
+  const codes = Array.from({ length: 20 }, (_, index) => ({
+    code: `STARRAILCODE${index}`,
+    rewards: "Stellar Jade*100;Refined Aether*4;Traveler's Guide*2",
+  }));
+
+  const rendered = codeLines(hsr, codes, 1024);
+  assert.ok(rendered.length <= 1024, `field was ${rendered.length} characters`);
+
+  const lines = rendered.split("\n");
+  assert.match(lines.at(-1)!, /^…and \d+ more$/);
+  // The note has to account for every code the field didn't show, itself
+  // included.
+  assert.equal(lines.at(-1), `…and ${20 - (lines.length - 1)} more`);
+});
+
+test("codeLines keeps the last code when it fits", () => {
+  const codes = [{ code: "ZENLESSGIFT", rewards: null }];
+  assert.equal(codeLines(zzz, codes, 1024).split("\n").length, 1);
+});
+
+test("activeCodesFor answers per game, failures and all", async () => {
+  const listed = await activeCodesFor(GAMES, async (game) => {
+    if (game.key === "hkrpg") throw new Error("HTTP 503");
+    return game.key === "nap" ? [{ code: "ZZZMEIJI", rewards: null }] : [];
+  });
+
+  assert.deepEqual(
+    listed.map((entry) => entry.game),
+    GAMES,
+  );
+  assert.deepEqual(listed[0], { game: genshin, codes: [], error: null });
+  assert.deepEqual(listed[1]!.codes, []);
+  assert.match(listed[1]!.error!, /HTTP 503/);
+  assert.deepEqual(listed[2]!.codes, [{ code: "ZZZMEIJI", rewards: null }]);
 });
 
 test("a code on one game's list names that game", async () => {

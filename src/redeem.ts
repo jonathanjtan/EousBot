@@ -19,6 +19,10 @@
  * all three links instead of guessing, which costs the reader a click and never
  * sends them to the wrong game.
  *
+ * That same published list is the whole of `/codes`, which reads it per game
+ * and hands back every live code as the link that redeems it, so nobody has to
+ * find a code before they can use one.
+ *
  * Imports nothing, like the other data modules: pulling in log.ts would drag
  * config.ts along with it, and config exits the process when secrets are
  * absent, which would take the test suite with it. The command handler does the
@@ -72,6 +76,12 @@ export function gameFor(value: string | null): RedeemGame | null {
   return GAMES.find((game) => game.value === value) ?? null;
 }
 
+/** The games one option value asks for, or all three when it names none. */
+export function gamesFor(value: string | null): RedeemGame[] {
+  const chosen = gameFor(value);
+  return chosen === null ? GAMES : [chosen];
+}
+
 /**
  * A pasted code as the redemption page wants it, or null if it isn't one.
  *
@@ -99,31 +109,146 @@ const CODE_LIST = "https://hoyo-codes.seria.moe/codes";
  */
 const LOOKUP_TIMEOUT_MS = 5_000;
 
-/** The codes a list payload names, upper-cased to compare against. */
-export function parseCodeList(payload: unknown): string[] {
+/** One live code, with whatever the list says it pays out. */
+export interface ActiveCode {
+  code: string;
+  /** The published reward text, or null where the entry gives none. */
+  rewards: string | null;
+}
+
+/**
+ * The codes a list payload names, upper-cased to compare against.
+ *
+ * Entries carry a status, and anything other than `OK` is a code the list is
+ * still holding but nobody can redeem, so those come out here rather than in
+ * each caller.
+ */
+export function parseCodeEntries(payload: unknown): ActiveCode[] {
   const codes = (payload as { codes?: unknown } | null | undefined)?.codes;
   if (!Array.isArray(codes)) return [];
 
-  const found: string[] = [];
+  const found: ActiveCode[] = [];
   for (const entry of codes) {
-    const code = (entry as { code?: unknown } | null | undefined)?.code;
-    if (typeof code === "string" && code.trim()) found.push(code.trim().toUpperCase());
+    const { code, status, rewards } = (entry ?? {}) as {
+      code?: unknown;
+      status?: unknown;
+      rewards?: unknown;
+    };
+    if (typeof code !== "string" || !code.trim()) continue;
+    if (typeof status === "string" && status !== "OK") continue;
+
+    found.push({
+      code: code.trim().toUpperCase(),
+      rewards: typeof rewards === "string" && rewards.trim() ? rewards.trim() : null,
+    });
   }
   return found;
 }
 
-/** Reads the published list; injectable so the tests need no network. */
-export type CodeLister = (game: RedeemGame) => Promise<string[]>;
+/** Just the codes, for the places that only compare them. */
+export function parseCodeList(payload: unknown): string[] {
+  return parseCodeEntries(payload).map((entry) => entry.code);
+}
 
-const activeCodes: CodeLister = async (game) => {
+/**
+ * Reads one game's published list. Injectable everywhere it's used so the tests
+ * need no network.
+ */
+export type CodeFetcher = (game: RedeemGame) => Promise<ActiveCode[]>;
+
+export const fetchActiveCodes: CodeFetcher = async (game) => {
   const response = await fetch(`${CODE_LIST}?${new URLSearchParams({ game: game.key })}`, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-  return parseCodeList(await response.json());
+  return parseCodeEntries(await response.json());
 };
+
+/** The same read, reduced to the codes `identifyGame` matches on. */
+export type CodeLister = (game: RedeemGame) => Promise<string[]>;
+
+const activeCodes: CodeLister = async (game) =>
+  (await fetchActiveCodes(game)).map((entry) => entry.code);
+
+/** One game's list, or the reason it couldn't be read. */
+export interface GameCodes {
+  game: RedeemGame;
+  codes: ActiveCode[];
+  error: string | null;
+}
+
+/**
+ * Every named game's active codes, gathered at once.
+ *
+ * One list being unreadable must not cost the others theirs, so a game that
+ * fails comes back with its reason attached and the rest still answer.
+ */
+export async function activeCodesFor(
+  games: RedeemGame[],
+  fetcher: CodeFetcher = fetchActiveCodes,
+): Promise<GameCodes[]> {
+  const results = await Promise.allSettled(games.map((game) => fetcher(game)));
+
+  return results.map((result, index) => {
+    const game = games[index]!;
+    return result.status === "fulfilled"
+      ? { game, codes: result.value, error: null }
+      : { game, codes: [], error: String(result.reason) };
+  });
+}
+
+/**
+ * The published reward text as a line worth reading. It arrives either as
+ * `Primogem*30;Mora*10000` or as a sentence somebody wrote by hand, so the
+ * separators are tidied where they exist and the prose is left alone.
+ */
+export function tidyRewards(rewards: string, limit = 90): string {
+  const tidied = rewards
+    .split(";")
+    .map((part) => part.trim().replace(/\s*\*\s*/, " x"))
+    .filter((part) => part !== "")
+    .join(", ");
+
+  return tidied.length <= limit ? tidied : `${tidied.slice(0, limit - 1).trimEnd()}…`;
+}
+
+/** One code as a link that redeems it, with what it pays beside it. */
+export function codeLine(game: RedeemGame, entry: ActiveCode): string {
+  const link = `[\`${entry.code}\`](${redeemUrl(game, entry.code)})`;
+  return entry.rewards === null ? link : `${link} · ${tidyRewards(entry.rewards)}`;
+}
+
+/**
+ * A game's codes as lines fitting `limit` characters.
+ *
+ * Star Rail runs ten codes at a slow month and the reward text is the long part
+ * of each line, so the tail is dropped with a count of what it held rather than
+ * the whole lot being refused for length.
+ */
+export function codeLines(game: RedeemGame, codes: ActiveCode[], limit: number): string {
+  const lines: string[] = [];
+  let length = 0;
+
+  for (const [index, entry] of codes.entries()) {
+    const rendered = codeLine(game, entry);
+    const remaining = codes.length - index;
+    const note = `…and ${remaining} more`;
+    // Room for this line, and for the note as well while codes are still to
+    // come after it. Every line taken reserves that room, so the note that
+    // replaces the tail always has somewhere to go.
+    const needed = rendered.length + 1 + (remaining > 1 ? note.length + 1 : 0);
+    if (length + needed > limit) {
+      lines.push(note);
+      break;
+    }
+    lines.push(rendered);
+    length += rendered.length + 1;
+  }
+
+  return lines.join("\n");
+}
 
 /** How a code's game was settled, or that it wasn't. */
 export type Verdict = "listed" | "spells" | "unknown";

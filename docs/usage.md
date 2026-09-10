@@ -121,9 +121,11 @@ every interruption is turns not taken.
 This was the most fixable finding in the document, and it is now fixed —
 `/stop` and `/active` exist because of it. See **Active mode** below.
 
-Effort was already dialled back from the SDK default to `medium` for exactly
-this reason (see `DEFAULT_EFFORT` in `src/agentopts.ts`), which is why recent
-single-shot builds sit in the 16-request, 440k-token band rather than higher.
+Effort was dialled back to `medium` for exactly this reason, which is why the
+single-shot builds measured here sit in the 16-request, 440k-token band rather
+than higher. It is `xhigh` again as of request #68 (see `DEFAULT_EFFORT` in
+`src/agentopts.ts`), so expect those figures to be a floor rather than a
+typical build; `/claude effort:medium` reproduces the old behaviour per build.
 
 ### A failed gate burns everything and buys nothing
 

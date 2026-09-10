@@ -66,6 +66,9 @@ const schema = z.object({
   // `claude` is logged in with on this machine. See config.agent.authMode.
   ANTHROPIC_API_KEY: z.string().optional(),
 
+  // Left unset, this is a floor rather than a fixture: at boot the bot asks
+  // Anthropic for the newest Opus and builds on that instead. Set it to pin a
+  // model and switch the lookup off. See src/models.ts.
   AGENT_MODEL: z.string().default("claude-opus-5"),
   // 60 was a ceiling nothing ever approached -- the most expensive build
   // measured used 82 requests across four review rounds, not one run. A lower
@@ -307,6 +310,14 @@ export const config = {
     authMode: env.ANTHROPIC_API_KEY ? ("apiKey" as const) : ("hostAuth" as const),
     apiKey: env.ANTHROPIC_API_KEY ?? null,
     model: env.AGENT_MODEL,
+    /**
+     * Whether AGENT_MODEL was set by hand rather than defaulted.
+     *
+     * A pinned model is honoured exactly; an unpinned one is a starting point
+     * that the startup lookup in models.ts may move forward to the newest Opus
+     * Anthropic lists. Someone who wrote a model into the environment meant it.
+     */
+    modelPinned: process.env.AGENT_MODEL !== undefined && process.env.AGENT_MODEL !== "",
     effort: env.AGENT_EFFORT,
     maxTurns: env.AGENT_MAX_TURNS,
     sessionVisibility: env.AGENT_SESSION_VISIBILITY,

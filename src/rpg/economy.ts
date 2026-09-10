@@ -1,5 +1,5 @@
 import { GODS, RACES } from "./content.js";
-import { find } from "./engine.js";
+import { find, take } from "./engine.js";
 import {
   CRATE_PRICE,
   coin,
@@ -150,6 +150,7 @@ export interface GiftResult {
   from: Character;
   to: Character;
   money: number;
+  /** As the receiver holds it, under their number. */
   item: Item | null;
 }
 
@@ -178,8 +179,9 @@ export function give(
 
   let item: Item | null = null;
   if (options.itemId !== undefined) {
-    item = takeFromPack(from, options.itemId);
-    if (!item) return no(`You have no item #${options.itemId} in your backpack.`);
+    const given = takeFromPack(from, options.itemId);
+    if (!given) return no(`You have no item #${options.itemId} in your backpack.`);
+    item = take(to, given);
     to.backpack.push(item);
   }
   if (money === 0 && !item) return no("Give something: coin, an item, or both.");
@@ -230,6 +232,8 @@ export function listForSale(
 export interface BuyResult {
   listing: Listing;
   seller: Character | null;
+  /** As the buyer holds it, under their number. */
+  item: Item;
 }
 
 export function buyListing(
@@ -251,13 +255,14 @@ export function buyListing(
 
   state.market.splice(index, 1);
   buyer.money -= listing.price;
-  buyer.backpack.push(listing.item);
+  const item = take(buyer, listing.item);
+  buyer.backpack.push(item);
 
   // The seller may have been deleted since listing; the coin is simply not
   // paid rather than the sale failing, so a stale listing cannot wedge the board.
   const seller = find(state, listing.sellerId);
   if (seller) seller.money += listing.price;
-  return ok({ listing, seller });
+  return ok({ listing, seller, item });
 }
 
 export function unlist(state: GameState, userId: string, listingId: number): Outcome<Listing> {
@@ -268,6 +273,8 @@ export function unlist(state: GameState, userId: string, listingId: number): Out
   if (index === -1) return no(`You have no listing #${listingId}.`);
 
   const [listing] = state.market.splice(index, 1) as [Listing];
+  // Same owner, and take() only hands out numbers from nextItemId up, so the
+  // item's own number is still free.
   character.backpack.push(listing.item);
   return ok(listing);
 }

@@ -139,7 +139,49 @@ test("you cannot give what you do not have, or give to yourself", () => {
   assert.equal(economy.give(state, "u0", "u1", { money: -5 }).ok, false);
 });
 
+/** Every item number a character holds, worn or packed. */
+function numbers(c: ReturnType<typeof engine.find>): number[] {
+  return [c!.weapon, c!.armor, ...c!.backpack].flatMap((i) => (i ? [i.id] : []));
+}
+
+test("a gift takes the receiver's next number, not the giver's", () => {
+  const state = realm(2);
+  const giver = engine.find(state, "u0")!;
+  const receiver = engine.find(state, "u1")!;
+  giver.backpack.push(item(7, 99));
+  receiver.backpack.push(item(7, 20));
+  receiver.nextItemId = 8;
+
+  const result = economy.give(state, "u0", "u1", { itemId: 7 });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.item!.id, 8);
+  assert.equal(receiver.nextItemId, 9);
+  const held = numbers(receiver);
+  assert.equal(new Set(held).size, held.length, `two items share a number: ${held}`);
+  assert.equal(engine.equip(state, "u1", 8).ok, true, "the gift answers to its new number");
+  assert.equal(receiver.weapon!.value, 99);
+});
+
 // ----------------------------------------------------------------- market ---
+
+test("a bought item takes the buyer's next number, not the seller's", () => {
+  const state = realm(2);
+  const buyer = engine.find(state, "u1")!;
+  engine.find(state, "u0")!.backpack.push(item(7, 99));
+  buyer.backpack.push(item(7, 20));
+  buyer.nextItemId = 8;
+  economy.listForSale(state, "u0", 7, 100, ctx());
+
+  const result = economy.buyListing(state, "u1", 1);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.item.id, 8);
+  assert.equal(buyer.nextItemId, 9);
+  const held = numbers(buyer);
+  assert.equal(new Set(held).size, held.length, `two items share a number: ${held}`);
+  assert.equal(buyer.backpack.find((i) => i.id === 8)!.value, 99);
+});
 
 test("a listing takes the item out of the world until it sells", () => {
   const state = realm(2);

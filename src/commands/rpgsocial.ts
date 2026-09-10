@@ -6,7 +6,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { find, findByName } from "../rpg/engine.js";
+import { find, findByName, take } from "../rpg/engine.js";
 import {
   buyCrates,
   buyListing,
@@ -191,7 +191,8 @@ export async function handleGive(interaction: I): Promise<void> {
   if (result.value.money > 0) parts.push(coin(result.value.money));
   if (result.value.item) parts.push(result.value.item.name);
   await interaction.reply(
-    `**${result.value.from.name}** gave ${parts.join(" and ")} to **${result.value.to.name}**.`,
+    `**${result.value.from.name}** gave ${parts.join(" and ")} to **${result.value.to.name}**.` +
+      (result.value.item ? ` It is \`#${result.value.item.id}\` in their backpack.` : ""),
   );
 }
 
@@ -374,8 +375,9 @@ export async function handleMarket(interaction: I, sub: string): Promise<void> {
     if (!result.ok) return whisper(interaction, result.reason);
     save();
     await interaction.reply(
-      `Bought **${result.value.listing.item.name}** for ${coin(result.value.listing.price)}` +
-        (result.value.seller ? ` from **${result.value.seller.name}**.` : "."),
+      `Bought **${result.value.item.name}** for ${coin(result.value.listing.price)}` +
+        (result.value.seller ? ` from **${result.value.seller.name}**.` : ".") +
+        ` It is \`#${result.value.item.id}\` in your backpack.`,
     );
     return;
   }
@@ -629,14 +631,13 @@ export async function handleAdmin(interaction: I, sub: string): Promise<void> {
       const value = interaction.options.getInteger("value", true);
       const rarity = interaction.options.getString("rarity", true) as Rarity;
       const kind = interaction.options.getString("kind", true) as "weapon" | "armor";
-      const item = {
-        id: character.nextItemId,
+      const item = take(character, {
+        id: 0,
         name: `${rarity === "common" ? "Plain" : "Granted"} ${kind === "weapon" ? "Blade" : "Coat"}`,
         kind,
         value,
         rarity,
-      };
-      character.nextItemId += 1;
+      });
       character.backpack.push(item);
       save();
       await interaction.reply(

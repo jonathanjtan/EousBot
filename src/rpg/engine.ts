@@ -121,8 +121,14 @@ export function newCharacter(
   return character;
 }
 
-/** Stamps an item with this character's next id. */
-function take(character: Character, item: Item): Item {
+/**
+ * Stamps an item with this character's next number.
+ *
+ * Numbers are per character, so an item arriving from another character comes
+ * through here too. Keeping the sender's number is how one backpack ends up
+ * with two items answering to the same #.
+ */
+export function take(character: Character, item: Item): Item {
   const owned = { ...item, id: character.nextItemId };
   character.nextItemId += 1;
   return owned;

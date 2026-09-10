@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { log } from "../log.js";
 import { newGame } from "./engine.js";
 import { emptyCrates } from "./rules.js";
-import { RARITIES, type Character, type GameState } from "./types.js";
+import { RARITIES, type Character, type GameState, type Item } from "./types.js";
 
 /**
  * The world, on disk.
@@ -20,8 +20,37 @@ const storePath = join(config.runtime.repoPath, "state", "rpg.json");
 let cache: GameState | null = null;
 let dirty = false;
 
+/**
+ * Gives every item a character holds its own number, and moves nextItemId past
+ * all of them. Returns how many items changed number.
+ *
+ * Saves from before give and buy renumbered incoming items can hold two items
+ * under one number, or a number above nextItemId that a later drop would reuse.
+ * The first holder of a number keeps it, in the order weapon, armor, backpack,
+ * listings. So a listed item is the one that moves when it clashes, and players
+ * address listings by the listing's number anyway.
+ */
+function renumber(character: Character, listed: Item[]): number {
+  const held = [character.weapon, character.armor, ...character.backpack, ...listed].filter(
+    (item): item is Item => item !== null,
+  );
+  let next = Math.max(character.nextItemId, ...held.map((item) => item.id + 1));
+  const seen = new Set<number>();
+  let moved = 0;
+  for (const item of held) {
+    if (seen.has(item.id)) {
+      item.id = next;
+      next += 1;
+      moved += 1;
+    }
+    seen.add(item.id);
+  }
+  character.nextItemId = next;
+  return moved;
+}
+
 /** Fills in whatever a schema change added. A save from an older build is normal. */
-function hydrate(raw: Partial<GameState>): GameState {
+export function hydrate(raw: Partial<GameState>): GameState {
   const characters: Record<string, Character> = {};
   for (const [id, saved] of Object.entries(raw.characters ?? {})) {
     if (!saved || typeof saved !== "object") continue;
@@ -51,10 +80,25 @@ function hydrate(raw: Partial<GameState>): GameState {
       },
     };
   }
+
+  const market = Array.isArray(raw.market) ? raw.market : [];
+  for (const character of Object.values(characters)) {
+    const before = character.nextItemId;
+    const listed = market.filter((l) => l.sellerId === character.userId).map((l) => l.item);
+    const moved = renumber(character, listed);
+    if (moved > 0 || character.nextItemId !== before) {
+      log.info("Renumbered RPG items", {
+        character: character.name,
+        moved,
+        nextItemId: character.nextItemId,
+      });
+    }
+  }
+
   return {
     characters,
     guilds: raw.guilds ?? {},
-    market: Array.isArray(raw.market) ? raw.market : [],
+    market,
     nextListingId: raw.nextListingId ?? 1,
     raid: raw.raid ?? null,
     tournament: raw.tournament ?? null,

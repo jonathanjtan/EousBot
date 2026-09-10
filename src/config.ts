@@ -94,10 +94,12 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
-  CHAT_MODEL: z.string().default("claude-sonnet-5"),
+  // Same deal as AGENT_MODEL: a floor, not a fixture. Unset, chat runs on
+  // whatever the boot lookup decides is the newest Opus. Set it to pin one.
+  CHAT_MODEL: z.string().default("claude-opus-5"),
   // Higher than it was when chat could only search and answer: this agent has
   // a shell and is expected to actually finish jobs.
-  CHAT_EFFORT: z.enum(EFFORT_LEVELS).default("medium"),
+  CHAT_EFFORT: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT),
   // Enough to fetch thirty files, write a script and run it. Still a ceiling:
   // a conversational run bills the same as any other.
   CHAT_MAX_TURNS: z.coerce.number().int().positive().default(30),
@@ -329,6 +331,8 @@ export const config = {
   chat: {
     enabled: env.CHAT_ENABLED,
     model: env.CHAT_MODEL,
+    /** As with agent.modelPinned: a hand-set CHAT_MODEL is honoured exactly. */
+    modelPinned: process.env.CHAT_MODEL !== undefined && process.env.CHAT_MODEL !== "",
     effort: env.CHAT_EFFORT,
     maxTurns: env.CHAT_MAX_TURNS,
     workspaceRoot: env.CHAT_WORKSPACE_ROOT,

@@ -132,7 +132,43 @@ test("an upgrade from a crate equips itself; a downgrade does not", () => {
   assert.equal(junk.ok, true);
   if (!junk.ok) return;
   assert.equal(junk.equipped, false);
-  assert.equal(c.backpack.length, 1);
+  assert.ok(c.backpack.some((i) => i.id === junk.item.id));
+});
+
+test("a crate upgrade puts the displaced item in the pack", () => {
+  const state = world();
+  const c = engine.find(state, "u0")!;
+  c.crates.legendary = 1;
+  c.level = 30;
+  const kit = { weapon: c.weapon!, armor: c.armor! };
+
+  const opened = engine.openCrate(state, "u0", "legendary", ctx(7));
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  assert.equal(opened.equipped, true);
+  const old = kit[opened.item.kind];
+  assert.equal(opened.replaced?.id, old.id);
+  assert.ok(c.backpack.some((i) => i.id === old.id), "the displaced item must not vanish");
+  assert.equal(opened.soldOverflow, 0);
+});
+
+test("a crate upgrade with a full pack sells the displaced item", () => {
+  const state = world();
+  const c = engine.find(state, "u0")!;
+  c.crates.legendary = 1;
+  c.level = 30;
+  for (let i = 0; i < rules.DEFAULT_TUNING.backpackSize; i += 1) {
+    c.backpack.push({ id: 1000 + i, name: "junk", kind: "weapon", value: 1, rarity: "common" });
+  }
+  const before = c.money;
+
+  const opened = engine.openCrate(state, "u0", "legendary", ctx(7));
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+  assert.equal(opened.equipped, true);
+  assert.ok(opened.soldOverflow > 0, "the displaced item must be paid for");
+  assert.equal(c.money, before + opened.soldOverflow);
+  assert.equal(c.backpack.length, rules.DEFAULT_TUNING.backpackSize);
 });
 
 test("a full backpack sells the overflow instead of losing it", () => {

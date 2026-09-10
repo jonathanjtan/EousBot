@@ -846,12 +846,16 @@ async function doOpen(interaction: Interaction): Promise<void> {
   save();
 
   const lines = [`Out of the ${rarity} crate: ${describe(result.item)}`];
-  if (result.equipped) {
+  if (result.equipped && result.replaced) {
+    const old = result.replaced;
+    lines.push(`Better than your ${old.name} (${old.value}), so it is equipped.`);
     lines.push(
-      result.replaced
-        ? `Better than your ${result.replaced.name} (${result.replaced.value}), so it is equipped.`
-        : "Equipped, since you had nothing in that slot.",
+      result.soldOverflow > 0
+        ? `Your backpack was full, so ${old.name} sold for ${coin(result.soldOverflow)}.`
+        : `${old.name} went into the backpack.`,
     );
+  } else if (result.equipped) {
+    lines.push("Equipped, since you had nothing in that slot.");
   } else if (result.soldOverflow > 0) {
     lines.push(`Your backpack was full, so it sold immediately for ${coin(result.soldOverflow)}.`);
   } else {

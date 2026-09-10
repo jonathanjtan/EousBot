@@ -363,7 +363,9 @@ export function openCrate(
   if (!slot || item.value > slot.value) {
     if (item.kind === "weapon") character.weapon = item;
     else character.armor = item;
-    return { ok: true, item, replaced: slot, equipped: true, soldOverflow: 0 };
+    // The displaced item goes to the pack, same as a manual equip.
+    const soldOverflow = slot ? stow(character, slot, ctx.tuning) : 0;
+    return { ok: true, item, replaced: slot, equipped: true, soldOverflow };
   }
 
   const soldOverflow = stow(character, item, ctx.tuning);

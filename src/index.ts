@@ -44,7 +44,7 @@ import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
 import { log } from "./log.js";
-import { refreshAgentModel } from "./models.js";
+import { refreshModels } from "./models.js";
 import { acquire, describe, held, release } from "./inflight.js";
 import { penalizeMessage, penalizeNick, penalizePart } from "./idlerpg/engine.js";
 import { checkGameChannel } from "./gamechannel.js";
@@ -144,8 +144,8 @@ client.once(Events.ClientReady, async (ready) => {
   );
 
   // Before the command sync below, so an Opus released since the last deploy
-  // is both the build default and selectable in /claude. Never throws.
-  await refreshAgentModel();
+  // is the default for builds and chat, and selectable in both. Never throws.
+  await refreshModels();
 
   // Closes the self-modification loop. A command the agent wrote is compiled
   // and loaded by the restart above, but Discord serves its command list from

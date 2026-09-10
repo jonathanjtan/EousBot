@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import { chatModel } from "./models.js";
 import { setRunningChat, wasStopped } from "./running.js";
 import { UNSLOP_RULES } from "./unslop.js";
 import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -354,7 +355,7 @@ const settings = new Map<string, { model?: string; effort?: EffortLevel }>();
 export function chatSettings(key: string): { model: string; effort: EffortLevel } {
   const override = settings.get(key);
   return {
-    model: override?.model ?? config.chat.model,
+    model: override?.model ?? chatModel(),
     effort: override?.effort ?? config.chat.effort,
   };
 }
@@ -538,7 +539,7 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
   const convo = await workspaceFor(request);
   const { model, effort } = request.conversation
     ? chatSettings(request.conversation)
-    : { model: config.chat.model, effort: config.chat.effort };
+    : { model: chatModel(), effort: config.chat.effort };
 
   log.info("Chat starting", {
     askedBy: request.askedBy,

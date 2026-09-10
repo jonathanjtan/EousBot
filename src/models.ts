@@ -3,13 +3,13 @@ import { config } from "./config.js";
 import { log } from "./log.js";
 
 /**
- * Which model a build runs on when /claude doesn't pick one.
+ * Which model a build or a chat turn runs on when nobody picks one.
  *
- * AGENT_MODEL names a model that existed when someone last edited the
- * environment, which is how the bot ended up months behind a release. So at
+ * AGENT_MODEL and CHAT_MODEL name models that existed when someone last edited
+ * the environment, which is how the bot ended up months behind a release. So at
  * boot it asks Anthropic what Opus models exist and adopts the newest one --
- * unless AGENT_MODEL was set by hand, in which case that is the answer and
- * nothing here overrides it.
+ * unless the variable was set by hand, in which case that is the answer and
+ * nothing here overrides it. The two are pinned independently.
  *
  * Everything about this is best-effort. The lookup needs an API key, which
  * `hostAuth` deployments don't have; the endpoint can be down; the newest Opus
@@ -28,22 +28,33 @@ interface ModelEntry {
   created_at?: string;
 }
 
-let resolved: string | null = null;
+/** The newest Opus the boot lookup found, or null if it never got one. */
+let newestOpus: string | null = null;
 
 /** The model builds use. Equals config.agent.model until a lookup beats it. */
 export function agentModel(): string {
-  return resolved ?? config.agent.model;
+  if (config.agent.modelPinned) return config.agent.model;
+  return newestOpus ?? config.agent.model;
+}
+
+/** The model chat uses when a channel hasn't overridden it with /chat model. */
+export function chatModel(): string {
+  if (config.chat.modelPinned) return config.chat.model;
+  return newestOpus ?? config.chat.model;
 }
 
 /**
- * Looks up the newest Opus and adopts it as the build default.
+ * Looks up the newest Opus and adopts it as the default for both agents.
  *
  * Called once from ClientReady, before slash commands are synced, so a model
- * discovered here also reaches the /claude choice list. Never throws.
+ * discovered here also reaches the /claude and /chat choice lists. Never throws.
  */
-export async function refreshAgentModel(): Promise<void> {
-  if (config.agent.modelPinned) {
-    log.info("AGENT_MODEL is pinned; skipping model lookup", { model: config.agent.model });
+export async function refreshModels(): Promise<void> {
+  if (config.agent.modelPinned && config.chat.modelPinned) {
+    log.info("AGENT_MODEL and CHAT_MODEL are both pinned; skipping model lookup", {
+      agent: config.agent.model,
+      chat: config.chat.model,
+    });
     return;
   }
   if (!config.agent.apiKey) {
@@ -57,12 +68,11 @@ export async function refreshAgentModel(): Promise<void> {
   if (!newest) return;
 
   offerModel(newest.display_name ?? newest.id, newest.id);
-  if (newest.id === config.agent.model) return;
-
-  resolved = newest.id;
-  log.info("Adopted a newer Opus as the build default", {
-    was: config.agent.model,
-    now: newest.id,
+  newestOpus = newest.id;
+  log.info("Newest Opus resolved", {
+    opus: newest.id,
+    agent: agentModel(),
+    chat: chatModel(),
   });
 }
 

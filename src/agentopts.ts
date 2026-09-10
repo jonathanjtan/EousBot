@@ -43,12 +43,12 @@ export function offerModel(name: string, value: string): void {
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /**
- * The effort a build runs at when neither /claude nor AGENT_EFFORT picks one.
+ * The effort a build or a chat turn runs at when nothing else picks one.
  *
  * `xhigh` is the level Anthropic recommends for coding and agentic work, and
- * it is what Claude Code itself defaults to. It costs more per build than the
- * `medium` this used to be; the trade is fewer builds that come back wrong.
- * Ask for less per build with /claude when a request is trivial.
+ * it is what Claude Code itself defaults to. It costs more per run than the
+ * `medium` this used to be; the trade is fewer answers that come back wrong.
+ * Ask for less with /claude or /chat effort when a request is trivial.
  */
 export const DEFAULT_EFFORT: EffortLevel = "xhigh";
 

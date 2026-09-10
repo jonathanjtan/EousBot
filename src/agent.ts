@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import { log } from "./log.js";
+import { agentModel } from "./models.js";
 import { looksLikeMissingSession } from "./naming.js";
 import { setRunning, wasStopped } from "./running.js";
 import { UNSLOP_RULES } from "./unslop.js";
@@ -270,7 +271,7 @@ async function runAgent(opts: {
   const { worktreePath, agentOptions, onProgress } = opts;
   const request = { number: opts.issueNumber };
 
-  const model = agentOptions?.model ?? config.agent.model;
+  const model = agentOptions?.model ?? agentModel();
   const effort = agentOptions?.effort ?? config.agent.effort;
 
   let summary = "";

@@ -20,6 +20,7 @@ const {
   EFFORT_LEVELS,
   MODEL_CHOICES,
   describeAgentOptions,
+  offerModel,
   parseEffort,
   parseModel,
 } = await import("../src/agentopts.ts");
@@ -68,7 +69,7 @@ test("parseModel and parseEffort accept only the offered choices", () => {
 });
 
 test("the default effort is one of the offered levels", () => {
-  assert.equal(DEFAULT_EFFORT, "medium");
+  assert.equal(DEFAULT_EFFORT, "xhigh");
   assert.ok(EFFORT_LEVELS.includes(DEFAULT_EFFORT));
 });
 
@@ -85,6 +86,22 @@ test("choice lists stay inside Discord's limits", () => {
       assert.ok(value.length > 0 && value.length <= CHOICE_LIMITS.valueLength, value);
     }
   }
+});
+
+test("offerModel adds an unknown model once and leaves known ones alone", () => {
+  const before = MODEL_CHOICES.length;
+
+  offerModel("Opus 9", "claude-opus-9");
+  assert.equal(MODEL_CHOICES[0]?.value, "claude-opus-9");
+  assert.equal(parseModel("claude-opus-9"), "claude-opus-9");
+  assert.equal(MODEL_CHOICES.length, before + 1);
+
+  // A model already offered keeps its hand-written name and its position.
+  offerModel("Opus Five", "claude-opus-5");
+  assert.equal(MODEL_CHOICES.length, before + 1);
+  assert.equal(MODEL_CHOICES.find((c) => c.value === "claude-opus-5")?.name, "Opus 5");
+
+  MODEL_CHOICES.shift();
 });
 
 test("describeAgentOptions omits effort when none was resolved", () => {

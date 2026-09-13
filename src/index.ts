@@ -40,6 +40,7 @@ import {
   handleMathsButton,
   handleTriviaButton,
 } from "./commands/rpgsocial.js";
+import { decodeCodesPage, handleCodesPage } from "./commands/codes.js";
 import { config, isAdmin } from "./config.js";
 import { ensureLabels, getFeatureRequest } from "./github.js";
 import { currentSha } from "./git.js";
@@ -495,6 +496,14 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       const drawOffer = decodeDrawOffer(interaction.customId);
       if (drawOffer) {
         await handleDrawButton(interaction, drawOffer);
+        return;
+      }
+
+      // Paging the gift code list is open to everyone, like the command that
+      // posts it -- the buttons re-render a public list and do nothing else.
+      const codesPage = decodeCodesPage(interaction.customId);
+      if (codesPage) {
+        await handleCodesPage(interaction, codesPage);
         return;
       }
 

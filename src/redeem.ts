@@ -271,19 +271,27 @@ function emptyLine(entry: GameCodes): string {
   return entry.error === null ? "No live codes right now." : "List unavailable just now.";
 }
 
-/** One game's fields: its codes chunked, or the line that stands in for them. */
-function gameFields(entry: GameCodes, limit: number): CodeField[] {
-  const chunks = codeChunks(entry.game, entry.codes, limit);
-  if (chunks.length === 0) return [{ name: entry.game.name, value: emptyLine(entry) }];
+/**
+ * A field name Discord renders as nothing, for a list that carries on under the
+ * heading above it. The API refuses an empty name, and a zero-width space is
+ * the shortest thing it accepts.
+ */
+export const NO_HEADING = "\u200b";
 
-  return chunks.map((value, index) => ({
-    name: index === 0 ? entry.game.name : `${entry.game.name} (continued)`,
-    value,
-  }));
+/** One game's field values: its codes chunked, or the line that stands in. */
+function gameValues(entry: GameCodes, limit: number): string[] {
+  const chunks = codeChunks(entry.game, entry.codes, limit);
+  return chunks.length === 0 ? [emptyLine(entry)] : chunks;
 }
 
 /**
  * The whole answer, cut into pages of `perPage` fields.
+ *
+ * A game is named once and its codes run on under that one heading, however
+ * many fields they take. The exception is a list that carries onto a page where
+ * its game hasn't been named yet, which names it again -- plainly, since a
+ * reader looking at page two has nothing else there to tell them whose codes
+ * these are.
  *
  * Always at least one page, so the caller renders "nothing live right now" the
  * same way it renders everything else.
@@ -296,10 +304,11 @@ export function codePages(
   const pages: CodeField[][] = [[]];
 
   for (const entry of listed) {
-    for (const field of gameFields(entry, limit)) {
+    gameValues(entry, limit).forEach((value, index) => {
       if (pages.at(-1)!.length === perPage) pages.push([]);
-      pages.at(-1)!.push(field);
-    }
+      const page = pages.at(-1)!;
+      page.push({ name: index === 0 || page.length === 0 ? entry.game.name : NO_HEADING, value });
+    });
   }
   return pages;
 }

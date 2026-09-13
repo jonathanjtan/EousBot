@@ -220,34 +220,88 @@ export function codeLine(game: RedeemGame, entry: ActiveCode): string {
   return entry.rewards === null ? link : `${link} · ${tidyRewards(entry.rewards)}`;
 }
 
+/** Discord's cap on an embed field's value. */
+export const FIELD_LIMIT = 1024;
+
+/** How many fields one page carries before the rest go on the next one. */
+export const PAGE_FIELDS = 4;
+
+/** One embed field: a heading, and as much of a game's list as fits under it. */
+export interface CodeField {
+  name: string;
+  value: string;
+}
+
 /**
- * A game's codes as lines fitting `limit` characters.
+ * A game's codes as chunks of `limit` characters each.
  *
  * Star Rail runs ten codes at a slow month and the reward text is the long part
- * of each line, so the tail is dropped with a count of what it held rather than
- * the whole lot being refused for length.
+ * of each line, so one game's list outgrows the single field it gets. It takes
+ * as many fields as it needs instead: a code that ends up inside "…and 4 more"
+ * is a code nobody can click, which defeats the point of listing it.
  */
-export function codeLines(game: RedeemGame, codes: ActiveCode[], limit: number): string {
-  const lines: string[] = [];
+export function codeChunks(game: RedeemGame, codes: ActiveCode[], limit = FIELD_LIMIT): string[] {
+  const chunks: string[] = [];
+  let lines: string[] = [];
   let length = 0;
 
-  for (const [index, entry] of codes.entries()) {
+  for (const entry of codes) {
     const rendered = codeLine(game, entry);
-    const remaining = codes.length - index;
-    const note = `…and ${remaining} more`;
-    // Room for this line, and for the note as well while codes are still to
-    // come after it. Every line taken reserves that room, so the note that
-    // replaces the tail always has somewhere to go.
-    const needed = rendered.length + 1 + (remaining > 1 ? note.length + 1 : 0);
-    if (length + needed > limit) {
-      lines.push(note);
-      break;
+    // A line that fills a whole field on its own is a list entry that isn't a
+    // code. Dropping it beats an embed Discord refuses outright.
+    if (rendered.length > limit) continue;
+
+    // `length` counts a newline after every line held, so it is the joined
+    // length plus one -- exactly the room the next line needs.
+    if (lines.length > 0 && length + rendered.length > limit) {
+      chunks.push(lines.join("\n"));
+      lines = [];
+      length = 0;
     }
     lines.push(rendered);
     length += rendered.length + 1;
   }
 
-  return lines.join("\n");
+  if (lines.length > 0) chunks.push(lines.join("\n"));
+  return chunks;
+}
+
+/** The line a game with nothing live, or nothing readable, gets instead. */
+function emptyLine(entry: GameCodes): string {
+  return entry.error === null ? "No live codes right now." : "List unavailable just now.";
+}
+
+/** One game's fields: its codes chunked, or the line that stands in for them. */
+function gameFields(entry: GameCodes, limit: number): CodeField[] {
+  const chunks = codeChunks(entry.game, entry.codes, limit);
+  if (chunks.length === 0) return [{ name: entry.game.name, value: emptyLine(entry) }];
+
+  return chunks.map((value, index) => ({
+    name: index === 0 ? entry.game.name : `${entry.game.name} (continued)`,
+    value,
+  }));
+}
+
+/**
+ * The whole answer, cut into pages of `perPage` fields.
+ *
+ * Always at least one page, so the caller renders "nothing live right now" the
+ * same way it renders everything else.
+ */
+export function codePages(
+  listed: GameCodes[],
+  limit = FIELD_LIMIT,
+  perPage = PAGE_FIELDS,
+): CodeField[][] {
+  const pages: CodeField[][] = [[]];
+
+  for (const entry of listed) {
+    for (const field of gameFields(entry, limit)) {
+      if (pages.at(-1)!.length === perPage) pages.push([]);
+      pages.at(-1)!.push(field);
+    }
+  }
+  return pages;
 }
 
 /** How a code's game was settled, or that it wasn't. */

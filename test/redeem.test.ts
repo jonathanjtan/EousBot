@@ -14,7 +14,8 @@ import { test } from "node:test";
 const {
   GAMES,
   activeCodesFor,
-  codeLines,
+  codeChunks,
+  codePages,
   gameFor,
   gamesFor,
   identifyGame,
@@ -131,40 +132,91 @@ test("tidyRewards reads both shapes the list publishes", () => {
   assert.equal(tidyRewards("Polychrome*50000000", 12), "Polychrome…");
 });
 
-test("codeLines links every code and says what it pays", () => {
-  const rendered = codeLines(
-    zzz,
-    [
-      { code: "ZZZMEIJI", rewards: "Polychrome*50" },
-      { code: "ZZZ2YEAR", rewards: null },
-    ],
-    1024,
-  );
-  assert.deepEqual(rendered.split("\n"), [
+test("codeChunks links every code and says what it pays", () => {
+  const chunks = codeChunks(zzz, [
+    { code: "ZZZMEIJI", rewards: "Polychrome*50" },
+    { code: "ZZZ2YEAR", rewards: null },
+  ]);
+  assert.equal(chunks.length, 1);
+  assert.deepEqual(chunks[0]!.split("\n"), [
     "[`ZZZMEIJI`](https://zenless.hoyoverse.com/redemption?code=ZZZMEIJI) · Polychrome x50",
     "[`ZZZ2YEAR`](https://zenless.hoyoverse.com/redemption?code=ZZZ2YEAR)",
   ]);
 });
 
-test("codeLines drops the tail rather than overrunning the budget", () => {
-  const codes = Array.from({ length: 20 }, (_, index) => ({
+/** A game's worth of codes, each line long enough to make chunking bite. */
+function manyCodes(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
     code: `STARRAILCODE${index}`,
     rewards: "Stellar Jade*100;Refined Aether*4;Traveler's Guide*2",
   }));
+}
 
-  const rendered = codeLines(hsr, codes, 1024);
-  assert.ok(rendered.length <= 1024, `field was ${rendered.length} characters`);
+test("codeChunks keeps every code, in order, across as many fields as it takes", () => {
+  const codes = manyCodes(20);
+  const chunks = codeChunks(hsr, codes);
+  assert.ok(chunks.length > 1, "20 long lines do not fit one field");
 
-  const lines = rendered.split("\n");
-  assert.match(lines.at(-1)!, /^…and \d+ more$/);
-  // The note has to account for every code the field didn't show, itself
-  // included.
-  assert.equal(lines.at(-1), `…and ${20 - (lines.length - 1)} more`);
+  for (const chunk of chunks) {
+    assert.ok(chunk.length <= 1024, `field was ${chunk.length} characters`);
+  }
+
+  const lines = chunks.flatMap((chunk) => chunk.split("\n"));
+  assert.equal(lines.length, 20);
+  assert.deepEqual(
+    lines.map((line) => line.match(/`(STARRAILCODE\d+)`/)![1]),
+    codes.map((entry) => entry.code),
+  );
+  assert.ok(!chunks.some((chunk) => chunk.includes("more")));
 });
 
-test("codeLines keeps the last code when it fits", () => {
-  const codes = [{ code: "ZENLESSGIFT", rewards: null }];
-  assert.equal(codeLines(zzz, codes, 1024).split("\n").length, 1);
+test("codeChunks gives one code one chunk, and no codes none", () => {
+  assert.equal(codeChunks(zzz, [{ code: "ZENLESSGIFT", rewards: null }]).length, 1);
+  assert.deepEqual(codeChunks(zzz, []), []);
+});
+
+test("codeChunks drops a line too long for any field rather than overrunning", () => {
+  const chunks = codeChunks(zzz, [
+    { code: "A".repeat(700), rewards: null },
+    { code: "ZZZMEIJI", rewards: null },
+  ]);
+  assert.equal(chunks.length, 1);
+  assert.deepEqual(chunks[0]!.split("\n").length, 1);
+  assert.match(chunks[0]!, /ZZZMEIJI/);
+});
+
+test("codePages puts three short lists on one page and names each game once", () => {
+  const pages = codePages([
+    { game: genshin, codes: [{ code: "BALLETCOLLAB", rewards: null }], error: null },
+    { game: hsr, codes: [], error: null },
+    { game: zzz, codes: [], error: "HTTP 503" },
+  ]);
+
+  assert.equal(pages.length, 1);
+  assert.deepEqual(
+    pages[0]!.map((field) => field.name),
+    ["Genshin Impact", "Honkai: Star Rail", "Zenless Zone Zero"],
+  );
+  assert.equal(pages[0]![1]!.value, "No live codes right now.");
+  assert.equal(pages[0]![2]!.value, "List unavailable just now.");
+});
+
+test("codePages spills a long list onto continuation fields and further pages", () => {
+  const pages = codePages([{ game: hsr, codes: manyCodes(60), error: null }]);
+  assert.ok(pages.length > 1, "60 codes do not fit one page");
+
+  const fields = pages.flat();
+  assert.ok(fields.every((field) => field.value.length <= 1024));
+  assert.ok(pages.every((page) => page.length <= 4));
+  assert.equal(fields[0]!.name, "Honkai: Star Rail");
+  assert.ok(fields.slice(1).every((field) => field.name === "Honkai: Star Rail (continued)"));
+
+  const shown = fields.flatMap((field) => field.value.split("\n")).length;
+  assert.equal(shown, 60);
+});
+
+test("codePages always has a page to render", () => {
+  assert.deepEqual(codePages([]), [[]]);
 });
 
 test("activeCodesFor answers per game, failures and all", async () => {

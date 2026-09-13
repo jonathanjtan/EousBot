@@ -13,6 +13,7 @@ import { test } from "node:test";
 
 const {
   GAMES,
+  NO_HEADING,
   activeCodesFor,
   codeChunks,
   codePages,
@@ -201,15 +202,19 @@ test("codePages puts three short lists on one page and names each game once", ()
   assert.equal(pages[0]![2]!.value, "List unavailable just now.");
 });
 
-test("codePages spills a long list onto continuation fields and further pages", () => {
+test("codePages spills a long list onto further fields under one heading", () => {
   const pages = codePages([{ game: hsr, codes: manyCodes(60), error: null }]);
   assert.ok(pages.length > 1, "60 codes do not fit one page");
 
   const fields = pages.flat();
   assert.ok(fields.every((field) => field.value.length <= 1024));
   assert.ok(pages.every((page) => page.length <= 4));
-  assert.equal(fields[0]!.name, "Honkai: Star Rail");
-  assert.ok(fields.slice(1).every((field) => field.name === "Honkai: Star Rail (continued)"));
+
+  // Named at the top of every page it appears on, and nowhere else.
+  for (const page of pages) {
+    assert.equal(page[0]!.name, "Honkai: Star Rail");
+    assert.ok(page.slice(1).every((field) => field.name === NO_HEADING));
+  }
 
   const shown = fields.flatMap((field) => field.value.split("\n")).length;
   assert.equal(shown, 60);

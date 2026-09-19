@@ -32,14 +32,11 @@ interface Fixer {
  * https://x.com/dergonartificer/status/2101193095479996789, cunnyx added on
  * top. Each renders the same preview as the boring host it sits alongside,
  * checked against a real post.
+ *
+ * The post's fourth host, faggotx, was cut in review. It works; the slur in
+ * the domain is the reason, so don't add it back from the post.
  */
-const JOKE_RELINKERS = [
-  "mpregx.com",
-  "faggotx.com",
-  "hotyurisex.com",
-  "yaoisex.com",
-  "cunnyx.com",
-];
+const JOKE_RELINKERS = ["mpregx.com", "hotyurisex.com", "yaoisex.com", "cunnyx.com"];
 
 /**
  * The services, one entry per platform. Each was checked against a real post

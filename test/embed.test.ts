@@ -71,7 +71,7 @@ test("X links roll across the relinkers", () => {
 
   assert.deepEqual(
     [...hosts].sort(),
-    ["cunnyx.com", "faggotx.com", "fixupx.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
+    ["cunnyx.com", "fixupx.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
   );
 });
 
@@ -83,7 +83,7 @@ test("twitter.com rolls across the same relinkers, keeping fxtwitter", () => {
 
   assert.deepEqual(
     [...hosts].sort(),
-    ["cunnyx.com", "faggotx.com", "fxtwitter.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
+    ["cunnyx.com", "fxtwitter.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
   );
 });
 

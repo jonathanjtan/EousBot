@@ -12,12 +12,15 @@ import { test } from "node:test";
 const { EmbedError, fixEmbedUrl, SUPPORTED_PLATFORMS } = await import("../src/embed.ts");
 const { stripUrl } = await import("../src/strip.ts");
 
+/** X and Twitter roll between several hosts; 0 pins the roll to the first. */
+const first = () => 0;
+
 test("x.com and twitter.com go to their own fixers", () => {
-  const x = fixEmbedUrl("https://x.com/jack/status/20");
+  const x = fixEmbedUrl("https://x.com/jack/status/20", first);
   assert.equal(x.url, "https://fixupx.com/jack/status/20");
   assert.equal(x.platform, "X");
 
-  const twitter = fixEmbedUrl("https://twitter.com/jack/status/20");
+  const twitter = fixEmbedUrl("https://twitter.com/jack/status/20", first);
   assert.equal(twitter.url, "https://fxtwitter.com/jack/status/20");
   assert.equal(twitter.platform, "Twitter");
 });
@@ -30,7 +33,7 @@ test("the path, query and fragment survive the host swap", () => {
 
 test("www. and other decoration are dropped", () => {
   assert.equal(
-    fixEmbedUrl("https://mobile.twitter.com/jack/status/20").url,
+    fixEmbedUrl("https://mobile.twitter.com/jack/status/20", first).url,
     "https://fxtwitter.com/jack/status/20",
   );
   assert.equal(
@@ -51,8 +54,44 @@ test("links on a fixer that stopped working are moved to one that works", () => 
 });
 
 test("a link already on the right fixer comes back unchanged", () => {
-  assert.equal(fixEmbedUrl("https://fixupx.com/jack/status/20").url, "https://fixupx.com/jack/status/20");
+  assert.equal(fixEmbedUrl("https://fixupx.com/jack/status/20", first).url, "https://fixupx.com/jack/status/20");
   assert.equal(fixEmbedUrl("https://bskx.app/profile/bsky.app/post/abc").url, "https://bskx.app/profile/bsky.app/post/abc");
+});
+
+/**
+ * The novelty X relinkers from issue #77. The roll has to reach all of them,
+ * and a link on one of them has to be recognised on the way back in -- someone
+ * who doesn't like the domain they got will run /embed on the result again.
+ */
+test("X links roll across the relinkers", () => {
+  const hosts = new Set<string>();
+  for (let roll = 0; roll < 1; roll += 0.01) {
+    hosts.add(fixEmbedUrl("https://x.com/jack/status/20", () => roll).host);
+  }
+
+  assert.deepEqual(
+    [...hosts].sort(),
+    ["cunnyx.com", "faggotx.com", "fixupx.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
+  );
+});
+
+test("twitter.com rolls across the same relinkers, keeping fxtwitter", () => {
+  const hosts = new Set<string>();
+  for (let roll = 0; roll < 1; roll += 0.01) {
+    hosts.add(fixEmbedUrl("https://twitter.com/jack/status/20", () => roll).host);
+  }
+
+  assert.deepEqual(
+    [...hosts].sort(),
+    ["cunnyx.com", "faggotx.com", "fxtwitter.com", "hotyurisex.com", "mpregx.com", "yaoisex.com"],
+  );
+});
+
+test("a link on a relinker is rerolled rather than refused", () => {
+  const result = fixEmbedUrl("https://cunnyx.com/jack/status/20", first);
+
+  assert.equal(result.url, "https://fixupx.com/jack/status/20");
+  assert.equal(result.platform, "X");
 });
 
 test("the remaining platforms are covered", () => {
@@ -69,7 +108,7 @@ test("the remaining platforms are covered", () => {
 });
 
 test("http is upgraded", () => {
-  assert.equal(fixEmbedUrl("http://x.com/jack/status/20").url, "https://fixupx.com/jack/status/20");
+  assert.equal(fixEmbedUrl("http://x.com/jack/status/20", first).url, "https://fixupx.com/jack/status/20");
 });
 
 /**
@@ -81,7 +120,7 @@ test("stripping before the swap takes the share tracking off", () => {
   const cleaned = stripUrl("https://x.com/jack/status/20?s=20&t=abc");
 
   assert.deepEqual(cleaned.removed, ["s", "t"]);
-  assert.equal(fixEmbedUrl(cleaned.url).url, "https://fixupx.com/jack/status/20");
+  assert.equal(fixEmbedUrl(cleaned.url, first).url, "https://fixupx.com/jack/status/20");
 });
 
 test("a host that merely contains a known one is not rewritten", () => {

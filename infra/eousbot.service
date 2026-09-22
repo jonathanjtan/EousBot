@@ -31,8 +31,8 @@ Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 # An agent's shell can run anything, so one command can eat the host. On
 # 2026-09-22 a chat's `grep` (the CLI runs grep as its embedded ugrep) grew to
-# 5.9GB, and the host thrashed for 22 minutes before the kernel killed it. The
-# ceiling keeps a runaway inside this unit, where it is killed within seconds.
+# about 6GB, and the host thrashed for 22 minutes before the kernel killed it.
+# The ceiling keeps a runaway inside this unit, where it dies within seconds.
 MemoryMax=3G
 # The default, OOMPolicy=stop, answers the kernel killing any process in the
 # unit by stopping the whole unit: the grep died, then the bot, and the

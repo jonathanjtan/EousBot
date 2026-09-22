@@ -40,15 +40,16 @@ command -v systemctl >/dev/null || die "systemctl not found"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [[ "$NODE_MAJOR" -ge 22 ]] || die "node $NODE_MAJOR is too old; need >= 22"
 
-# The Agent SDK ships no binary; it resolves `claude` from PATH. The unit adds
-# ~/.local/bin explicitly, so check the place the unit will actually look
-# rather than trusting this shell's PATH (which sources profile.d and lies).
+# The agents run the CLI bundled with the Agent SDK, not this one. This one is
+# how the box logs in: hostAuth (blank ANTHROPIC_API_KEY) borrows the login it
+# keeps in ~/.claude. Check where the unit's PATH looks rather than trusting
+# this shell's PATH (which sources profile.d and lies).
 CLAUDE_BIN=""
 for candidate in "$HOME/.local/bin/claude" "/usr/local/bin/claude" "$(command -v claude 2>/dev/null || true)"; do
   [[ -n "$candidate" && -x "$candidate" ]] && { CLAUDE_BIN="$candidate"; break; }
 done
 if [[ -z "$CLAUDE_BIN" ]]; then
-  warn "claude CLI not found. Builds will fail until it is installed:"
+  warn "claude CLI not found. Without ANTHROPIC_API_KEY, the agents need it installed and logged in:"
   warn "  curl -fsSL https://claude.ai/install.sh | bash"
 else
   log "Found claude at $CLAUDE_BIN"

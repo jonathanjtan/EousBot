@@ -23,11 +23,22 @@ EnvironmentFile=%h/EousBot/.env
 ExecStart=/usr/bin/node %h/EousBot/dist/index.js
 
 # systemd user units do not source profile.d, so ~/.local/bin is absent from
-# the default PATH. The Agent SDK ships no binary of its own -- it resolves the
-# `claude` executable from PATH -- and the installer puts it in ~/.local/bin.
-# Without this line every /build fails at agent startup, and the error names
-# neither PATH nor claude.
+# the default PATH; this gives the agents' shells the PATH an SSH login has.
+# The agents themselves do not come from here. The Agent SDK runs the CLI
+# bundled in node_modules/@anthropic-ai/claude-agent-sdk-<platform>/, whose
+# version follows the SDK's, not whatever ~/.local/bin/claude updated to.
 Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+# An agent's shell can run anything, so one command can eat the host. On
+# 2026-09-22 a chat's `grep` (the CLI runs grep as its embedded ugrep) grew to
+# 5.9GB, and the host thrashed for 22 minutes before the kernel killed it. The
+# ceiling keeps a runaway inside this unit, where it is killed within seconds.
+MemoryMax=3G
+# The default, OOMPolicy=stop, answers the kernel killing any process in the
+# unit by stopping the whole unit: the grep died, then the bot, and the
+# question it was answering never got a reply. With `continue` only the
+# runaway dies, and the agent sees a failed command and carries on.
+OOMPolicy=continue
 
 # The bot restarts *itself* as part of normal operation: it exits cleanly after
 # a successful self-deploy and relies on systemd to bring up the new build.

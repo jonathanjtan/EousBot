@@ -1,4 +1,5 @@
 import { Routes, type REST } from "discord.js";
+import { commandSignature, type CommandShape } from "./commandsig.js";
 import { commands, messageCommands } from "./commands/index.js";
 import { config } from "./config.js";
 import { log } from "./log.js";
@@ -17,54 +18,16 @@ import { log } from "./log.js";
  * ones take up to an hour to propagate.
  */
 
-/**
- * A comparable shape covering the fields that actually affect what Discord
- * serves.
- *
- * Discord's responses carry fields the local payload never sets (`id`,
- * `application_id`, `version`, permission defaults), so comparing whole
- * objects reports a difference on every boot. Projecting both sides through
- * the same narrow shape is what makes "has anything really changed?"
- * answerable.
- */
-function signature(cmd: {
-  name?: string;
-  description?: string;
-  type?: number;
-  options?: unknown[];
-}): string {
-  const options = (cmd.options ?? []).map((raw) => {
-    const o = raw as { name?: string; description?: string; type?: number; required?: boolean };
-    return {
-      name: o.name,
-      description: o.description,
-      type: o.type,
-      // Discord echoes this back explicitly; builders omit it when false.
-      required: o.required ?? false,
-    };
-  });
-
-  // Defaulted rather than passed through: builders omit `type` for a slash
-  // command while Discord echoes back 1, and an unnormalised comparison would
-  // report a difference on every boot and re-register forever.
-  return JSON.stringify({
-    name: cmd.name,
-    type: cmd.type ?? 1,
-    description: cmd.description ?? "",
-    options,
-  });
-}
-
 /** Everything registered with Discord, slash and context menu alike. */
-function allPayloads(): Parameters<typeof signature>[0][] {
+function allPayloads(): CommandShape[] {
   return [
     ...commands.map((c) => c.data.toJSON()),
     ...messageCommands.map((c) => c.data.toJSON()),
-  ] as Parameters<typeof signature>[0][];
+  ] as CommandShape[];
 }
 
 function localSignatures(): string[] {
-  return allPayloads().map(signature).sort();
+  return allPayloads().map(commandSignature).sort();
 }
 
 /**
@@ -84,8 +47,8 @@ export async function syncGuildCommands(
 
   if (!opts.force) {
     try {
-      const existing = (await rest.get(route)) as Parameters<typeof signature>[0][];
-      const remote = existing.map(signature).sort();
+      const existing = (await rest.get(route)) as CommandShape[];
+      const remote = existing.map(commandSignature).sort();
       const local = localSignatures();
 
       if (remote.length === local.length && remote.every((sig, i) => sig === local[i])) {

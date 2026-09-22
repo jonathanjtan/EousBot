@@ -178,6 +178,15 @@ next measurement can tell which of them actually moved the number.
    claude.ai connectors may not be governed by this setting at all. The next
    transcript sample will show whether the prefix actually shrank.
 
+   Measured 2026-09-22: they are not governed by it. The connectors come from
+   the account rather than a settings file, and every chat and build session
+   was still offered eight of them. They arrive as deferred tools, so the
+   prefix carried their names rather than their schemas; the bigger problem
+   was that they were callable, and one past session did call Robinhood.
+   `sdkSettings` (`src/sdksettings.ts`) now passes
+   `disableClaudeAiConnectors: true` to every session, and
+   `test/sdksettings.test.ts` fails if a `query()` skips it.
+
 2. **Review rounds are counted and surfaced.** Each revision stamps
    `_Revision N, $cost_` into the PR body, and from round three Discord says
    plainly that a rebuild from a sharper request is often cheaper than another

@@ -4,6 +4,7 @@ import { log } from "./log.js";
 import { agentModel } from "./models.js";
 import { looksLikeMissingSession } from "./naming.js";
 import { setRunning, wasStopped } from "./running.js";
+import { sdkSettings } from "./sdksettings.js";
 import { UNSLOP_RULES } from "./unslop.js";
 import { collectWindows } from "./usage.js";
 import { noteUsageSnapshot } from "./usagewatch.js";
@@ -298,12 +299,11 @@ async function runAgent(opts: {
         effort,
         maxTurns: config.agent.maxTurns,
         // Project scope only. Omitting this loads every filesystem settings
-        // source, so a build inherited the host account's global MCP servers
-        // and skills -- around ninety tool schemas for Robinhood, Drive,
-        // Calendar and the rest, none of which a Discord bot will ever call.
-        // Tool descriptions live in the request *prefix*, so that cost was not
-        // paid once: it was paid on every turn of every build, at the front of
-        // the context where it is re-read the most. See docs/usage.md.
+        // source, so a build would inherit whatever MCP servers and skills the
+        // host's settings files carry, paid for in the prefix of every turn.
+        // The Robinhood, Drive and Calendar tools this was first aimed at are
+        // claude.ai connectors, which no settings source governs: `settings`
+        // below is what keeps those out. See docs/usage.md.
         //
         // 'project' rather than [] so a CLAUDE.md in this repo still reaches
         // the agent. The repo has none today, making this equivalent to [] --
@@ -321,7 +321,8 @@ async function runAgent(opts: {
           preset: "claude_code",
           append: SYSTEM_PROMPT_APPENDIX,
         },
-        settings: visibilitySettings(),
+        // Visibility, with the account's claude.ai connectors switched off.
+        settings: sdkSettings(visibilitySettings()),
         // In hostAuth mode we deliberately pass the environment through
         // untouched: an absent ANTHROPIC_API_KEY is what makes the SDK fall
         // back to the host's `claude` login.
@@ -445,6 +446,9 @@ export async function fetchUsage(): Promise<UsageSnapshot> {
     prompt: noInput(),
     options: {
       cwd: config.runtime.repoPath,
+      // No turn runs here, but without this the session still fetches and
+      // starts connecting every claude.ai connector on the account.
+      settings: sdkSettings(),
       // Credentials are resolved exactly as a build would resolve them, so the
       // limits reported are the ones a build would actually hit.
       env: config.agent.apiKey

@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import { log } from "./log.js";
 import { chatModel } from "./models.js";
 import { setRunningChat, wasStopped } from "./running.js";
+import { sdkSettings } from "./sdksettings.js";
 import { UNSLOP_RULES } from "./unslop.js";
 import type { EffortLevel, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
@@ -572,9 +573,12 @@ export async function answer(request: ChatRequest): Promise<ChatResult> {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         // Not `['project']`: this agent is not working on the repository, and
-        // the empty list also keeps the host account's MCP servers and skills
-        // out of every turn's prefix. See docs/usage.md.
+        // the empty list keeps MCP servers and skills from the host's settings
+        // files out of every turn's prefix. See docs/usage.md.
         settingSources: [],
+        // The account's claude.ai connectors are not settings files, so the
+        // line above never reached them. This does; see sdksettings.ts.
+        settings: sdkSettings(),
         // A plain string replaces the Claude Code preset outright, which is the
         // point: the coding-agent scaffolding is about shipping a pull request,
         // and would be paid for on every turn of a conversation that isn't.

@@ -69,7 +69,10 @@ const schema = z.object({
   // Left unset, this is a floor rather than a fixture: at boot the bot asks
   // Anthropic for the newest Opus and builds on that instead. Set it to pin a
   // model and switch the lookup off. See src/models.ts.
-  AGENT_MODEL: z.string().default("claude-opus-5"),
+  //
+  // The lookup needs an API key. In hostAuth mode it never runs, so this
+  // default is the model, and it moves only when someone edits it here.
+  AGENT_MODEL: z.string().default("claude-opus-5-5"),
   // 60 was a ceiling nothing ever approached -- the most expensive build
   // measured used 82 requests across four review rounds, not one run. A lower
   // bound turns "this is going badly" into a fast, cheap failure instead of a
@@ -96,7 +99,7 @@ const schema = z.object({
     .transform((v) => v === "true"),
   // Same deal as AGENT_MODEL: a floor, not a fixture. Unset, chat runs on
   // whatever the boot lookup decides is the newest Opus. Set it to pin one.
-  CHAT_MODEL: z.string().default("claude-opus-5"),
+  CHAT_MODEL: z.string().default("claude-opus-5-5"),
   // Higher than it was when chat could only search and answer: this agent has
   // a shell and is expected to actually finish jobs.
   CHAT_EFFORT: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT),

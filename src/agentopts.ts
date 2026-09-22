@@ -19,6 +19,7 @@ export interface AgentOptions {
 }
 
 export const MODEL_CHOICES: { name: string; value: string }[] = [
+  { name: "Opus 5.5", value: "claude-opus-5-5" },
   { name: "Opus 5", value: "claude-opus-5" },
   { name: "Fable 5", value: "claude-fable-5" },
   { name: "Sonnet 5", value: "claude-sonnet-5" },
